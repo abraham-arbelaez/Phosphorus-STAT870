@@ -1,0 +1,32 @@
+---
+title: "Magnitude of response for Soil Test P"
+author: "Sofia Cominelli, Abraham Arbelaez"
+output:
+  pdf_document
+fontsize: 11pt
+geometry: margin=1in
+header-includes:
+  - \usepackage{hyperref}
+---
+
+# Background
+
+Phosphorus is an essential macronutrient for plants, and optimizing its input is a critical component for improving crop profitability. However, achieving the balance between crop nutrient requirements and environmental concerns remains a major challenge ([Withers et al., 2019](https://doi.org/10.2134/jeq2019.03.0131)). A key step in addressing this challenge is to determine the likelihood that a site with a given soil P concentration will respond to fertilization. Considerable debate exists regarding the appropriate method for establishing this relationship, with studies such as [Mallarino and Blackmer (1992)](https://doi.org/10.2134/agronj1992.00021962008400050017x) highlighting the challenges of determining whether a single threshold should be defined and, if so, how reliable that threshold might be. Given these limitations, an alternative and often more practical approach is to classify data into categories that reflect different magnitudes of crop response rather than relying on a single critical soil test P value ([Culman et al., 2023](https://doi.org/10.1002/saj2.20564)).
+
+In this context, the objective of this project is to evaluate methods to classify the magnitude of yield responses to phosphorus fertilization across diverse wheat sites. We also aim to evaluate unsupervised classification methods for identifying patterns in wheat site responses to phosphorus fertilization. Specifically, we will compare approaches such as principal component analysis ([Abdi and Williams, 2010](https://doi.org/10.1002/wics.101)), k-means clustering ([Likas et al., 2003](https://doi.org/10.1016/S0031-3203(02)00060-2)), fuzzy c-means ([Bezdek et al., 1984](https://doi.org/10.1016/0098-3004(84)90020-7)), and archetypal analysis ([Cutler and Breiman, 1994](https://doi.org/10.1080/00401706.1994.10485840)) to determine how consistently they capture meaningful site groupings. By linking cluster to expert decision, the project aims to identify which classification strategies provide the most informative and accurate guidance for fertilizer management.
+
+## References
+
+[Abdi, H., & Williams, L. J. (2010). *Principal component analysis*. Wiley interdisciplinary reviews: computational statistics, 2(4), 433-459.](https://doi.org/10.1002/wics.101)
+
+[Bezdek, J. C., Ehrlich, R., & Full, W. (1984). *FCM: The fuzzy c-means clustering algorithm*. Computers & geosciences, 10(2-3), 191-203.](https://doi.org/10.1016/0098-3004(84)90020-7)
+
+[Culman, S., Fulford, A., LaBarge, G., Watters, H., Lindsey, L. E., Dorrance, A., & Deiss, L. (2023). *Probability of crop response to phosphorus and potassium fertilizer: Lessons from 45 years of Ohio trials*. Soil Science Society of America Journal, 87(5), 1207–1220.](https://doi.org/10.1002/saj2.20564)
+
+[Cutler, A., & Breiman, L. (1994). *Archetypal analysis*. Technometrics, 36(4), 338-347.](https://doi.org/10.1080/00401706.1994.10485840)
+
+[Likas, A., Vlassis, N., & Verbeek, J. J. (2003). *The global k-means clustering algorithm*. Pattern recognition, 36(2), 451-461](https://doi.org/10.1016/S0031-3203(02)00060-2)
+
+[Mallarino, A. P., & Blackmer, A. M. (1992). *Comparison of methods for determining critical concentrations of soil test phosphorus for corn*. Agronomy Journal, 84(5), 850–856.](https://doi.org/10.2134/agronj1992.00021962008400050017x)
+
+[Withers, P. J., Vadas, P. A., Uusitalo, R., Forber, K. J., Hart, M., Foy, R. H., ... & Owens, P. R. (2019). *A global perspective on integrated strategies to manage soil phosphorus status for eutrophication control without limiting land productivity*. Journal of Environmental Quality, 48(5), 1234–1246.](https://doi.org/10.2134/jeq2019.03.0131)
