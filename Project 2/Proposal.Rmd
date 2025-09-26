@@ -1,0 +1,24 @@
+---
+title: "Soil Sampling Strategies for P Fertilizer Systems"
+author: "Abraham Arbelaez, Sofia Cominelli"
+output:
+  pdf_document
+fontsize: 11pt
+geometry: margin=1in
+header-includes:
+  - \usepackage{hyperref}
+---
+
+# Background
+
+Accurate soil sampling underpins reliable soil test interpretations and nutrient recommendations, yet fields fertilized with subsurface or starter bands present a unique challenge due to strong spatial heterogeneity. In reduced tillage systems, where fertilizer bands remain relatively undisturbed, nutrient distributions are patchy and conventional sampling approaches often yield biased estimates of plant-available phosphorus (P). Although sampling strategies such as random, systematic, proportional, and slice-based have been proposed, their performance in spatially structured systems requires further validation. This project integrates spatial statistics to develop and assess soil sampling strategies using long-term P research plots with marked fertilizer bands. We will employ simulation studies alongside spatial analysis, through variograms and kriging, to evaluate grid-based (point and cell), zonal, and irregular-grid sampling designs. By quantifying error and bias within a geostatistical framework, this research aims to refine soil sampling methodologies and improve nutrient management recommendations in banded fertilizer systems under reduced tillage.
+
+## References
+
+[Cressie, N. (2015). Statistics for spatial data. John Wiley & Sons.](DOI:10.1002/9781119115151)
+
+[Franzen, D. W. (2018). *Soil variability and fertility management*. Precision agriculture basics, 79-92.]( https://doi.org/10.2134/precisionagbasics.2016.0091)
+
+[Fernández, F. G., & Schaefer, D. (2012). *Assessment of soil phosphorus and potassium following real time kinematic‐guided broadcast and deep‐band placement in strip‐till and no‐till*. Soil Science Society of America Journal, 76(3), 1090-1099.](https://doi.org/10.2136/sssaj2011.0352)
+
+[Knowles, O., & Dawson, A. (2018). *Current soil sampling methods—a review. Farm environmental planning—science, policy and practice, LD Currie & CL Christensen (eds)*. Occasional Report.](https://flrc.massey.ac.nz/workshops/18/Manuscripts/Paper_Knowles_2018.pdf)
