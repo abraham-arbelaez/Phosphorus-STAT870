@@ -1,0 +1,298 @@
+---
+title: "Magnitude of response for Soil Test P"
+author: "Sofia Cominelli, Abraham Arbelaez"
+output:
+  pdf_document
+
+---
+
+# Background
+
+Phosphorus is an essential macronutrient for plants, and optimizing its input is a critical component for improving crop profitability. However, achieving the balance between crop nutrient requirements and environmental concerns remains a major challenge ([Withers et al., 2019](https://doi.org/10.2134/jeq2019.03.0131)). A key step in addressing this challenge is to determine the likelihood that a site with a given soil P concentration will respond to fertilization. Considerable debate exists regarding the appropriate method for establishing this relationship, with studies such as [Mallarino and Blackmer (1992)](https://doi.org/10.2134/agronj1992.00021962008400050017x) highlighting the challenges of determining whether a single threshold should be defined and, if so, how reliable that threshold might be. Given these limitations, an alternative and often more practical approach is to classify data into categories that reflect different magnitudes of crop response rather than relying on a single critical soil test P value ([Culman et al., 2023](https://doi.org/10.1002/saj2.20564)).
+
+In this context, the objective of this project is to evaluate methods to classify the magnitude of yield responses to phosphorus fertilization across diverse wheat sites. We also aim to evaluate unsupervised classification methods for identifying patterns in wheat site responses to phosphorus fertilization. Specifically, we will compare approaches such as principal component analysis ([Abdi and Williams, 2010](https://doi.org/10.1002/wics.101)), k-means clustering ([Likas et al., 2003](https://doi.org/10.1016/S0031-3203(02)00060-2)), fuzzy c-means ([Bezdek et al., 1984](https://doi.org/10.1016/0098-3004(84)90020-7)), and archetypal analysis ([Cutler and Breiman, 1994](https://doi.org/10.1080/00401706.1994.10485840)) to determine how consistently they capture meaningful site groupings. By linking cluster to expert decision, the project aims to identify which classification strategies provide the most informative and accurate guidance for fertilizer management.
+
+## References
+
+[Abdi, H., & Williams, L. J. (2010). *Principal component analysis*. Wiley interdisciplinary reviews: computational statistics, 2(4), 433-459.](https://doi.org/10.1002/wics.101)
+
+[Bezdek, J. C., Ehrlich, R., & Full, W. (1984). *FCM: The fuzzy c-means clustering algorithm*. Computers & geosciences, 10(2-3), 191-203.](https://doi.org/10.1016/0098-3004(84)90020-7)
+
+[Culman, S., Fulford, A., LaBarge, G., Watters, H., Lindsey, L. E., Dorrance, A., & Deiss, L. (2023). *Probability of crop response to phosphorus and potassium fertilizer: Lessons from 45 years of Ohio trials*. Soil Science Society of America Journal, 87(5), 1207–1220.](https://doi.org/10.1002/saj2.20564)
+
+[Cutler, A., & Breiman, L. (1994). *Archetypal analysis*. Technometrics, 36(4), 338-347.](https://doi.org/10.1080/00401706.1994.10485840)
+
+[Likas, A., Vlassis, N., & Verbeek, J. J. (2003). *The global k-means clustering algorithm*. Pattern recognition, 36(2), 451-461](https://doi.org/10.1016/S0031-3203(02)00060-2)
+
+[Mallarino, A. P., & Blackmer, A. M. (1992). *Comparison of methods for determining critical concentrations of soil test phosphorus for corn*. Agronomy Journal, 84(5), 850–856.](https://doi.org/10.2134/agronj1992.00021962008400050017x)
+
+[Withers, P. J., Vadas, P. A., Uusitalo, R., Forber, K. J., Hart, M., Foy, R. H., ... & Owens, P. R. (2019). *A global perspective on integrated strategies to manage soil phosphorus status for eutrophication control without limiting land productivity*. Journal of Environmental Quality, 48(5), 1234–1246.](https://doi.org/10.2134/jeq2019.03.0131)
+
+
+# Code
+
+## Load libraries
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(janitor)
+library(ggrepel)
+```
+
+## Read file
+```{r}
+getwd()
+df <- read_excel("P_kansas_wheat.xlsx") %>%
+  clean_names()
+
+colnames(df)
+```
+## Data wrangling
+```{r}
+df_clean <- df %>%
+  filter(source != "Urea") %>%                        
+  filter(!is.na(hg_bush_acre_raw), !is.na(p_kg)) %>%             
+  mutate(
+    p_kg = as.numeric(p_kg),
+    yield = as.numeric(hg_bush_acre_raw),
+    rep =  as.factor(rep)
+  ) %>%
+  rename(actual_yield = hg_bush_acre_raw)
+
+
+df_rep <- df_clean %>%
+  mutate(loc_rep = paste0(loc, "_rep", rep))
+
+# include the soil test phosphorus (STP)
+stp_loc <- df_rep %>%
+  group_by(loc) %>%
+  summarise(STP = first(p_m_ppm))
+
+
+stp_loc <- df_rep %>%
+  group_by(loc) %>%
+  summarise(STP = first(p_m_ppm))
+```
+
+### Plot
+
+```{r}
+df_clean <- df_clean %>%
+  mutate(loc = as.factor(loc),
+    rep = as.factor(rep))
+
+
+ggplot(df_clean, aes(x = p_kg, y = actual_yield, colour = rep, group = rep)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~ loc, scales = "free_y", ncol = 4) +
+  labs(x = "P rate (kg/ha)",y = "Actual yield (bu/ac)",
+    colour = "Rep") +
+  theme_bw()
+
+```
+# Linear response model
+
+For each location × replication (loc_rep), I fit the model:
+
+$$ Y_{ij} = \beta_{0_{ij}} + \beta_{1_{ij}} * P + \epsilon_{ij},$$
+
+$$\epsilon \sim N(0,\sigma^2_e),$$
+where:
+$\beta_{0_{ij}}$ is the intercept, wheat yield when no phosphorus fertilizer is applied.
+$\beta_{1_{ij}}$ is the slope, the expected change in yield per unit increase in phosphorus rate.
+$P$ Phosphorus fertilizer rate applied in the $j$th treatment of the $i$th location–replicate unit.
+$\epsilon$ is the residual term 
+
+
+```{r}
+# one slope and intercept per loc × rep
+df_slope <- df_rep %>%
+  group_by(loc, rep) %>%
+  nest() %>%
+  mutate(
+    int_slope = map(data, ~ lm(actual_yield ~ p_kg, data = .)),
+    intercept = map_dbl(int_slope, ~ coef(.x)[["(Intercept)"]]),
+    slope = map_dbl(int_slope, ~ coef(.x)[["p_kg"]])) %>%
+  ungroup() %>%
+  select(loc, rep, intercept, slope)
+
+
+stp_loc <- df_rep %>%
+  group_by(loc) %>%
+  summarise(STP = first(p_m_ppm), .groups = "drop")
+
+df_slope <- df_slope %>%
+  left_join(stp_loc, by = "loc") %>%
+  mutate(loc_rep = paste0(loc, "_rep", rep))
+
+
+p_max <- max(df_rep$p_kg, na.rm = TRUE)
+
+df_features <- df_slope %>%
+  mutate(delta_y = slope * p_max) %>%
+  select(loc, rep, loc_rep, intercept, slope, STP, delta_y)
+
+```
+
+
+## PCA
+```{r}
+# Components are intercept, slop and delta yield
+X_resp <- df_features %>%
+  dplyr::select(intercept, slope, delta_y) %>%  
+  drop_na() %>%
+  scale() 
+
+pca_resp <- prcomp(X_resp, center = FALSE, scale. = FALSE)
+
+summary(pca_resp)        
+pca_resp$rotation
+
+
+eigenvalues <- pca_resp$sdev^2
+prop_var <- eigenvalues / sum(eigenvalues)
+
+
+cumulative_var <- cumsum(prop_var)
+
+# Table for interpretation
+pca_variance_table <- tibble(
+  PC = paste0("PC", 1:length(eigenvalues)),
+  Eigenvalue = round(eigenvalues, 3),
+  `Proportion of Variance` = round(prop_var, 3),
+  `Cumulative Variance` = round(cumulative_var, 3)
+)
+
+print(pca_variance_table)
+       
+```
+```{r}
+label_names <- c(intercept = "Intercept (yield at 0 P)",
+  slope= "Slope (bu per kg P)",
+  delta_y= "Delta Y (0 to max P)")
+
+# PCA Scores
+pca_scores <- as.data.frame(pca_resp$x[, 1:2]) %>%
+  as_tibble() %>%
+  bind_cols(df_features %>% dplyr::select(loc, rep, loc_rep, STP))
+
+
+# Loadings
+loadings <- as.data.frame(pca_resp$rotation[, 1:2]) %>%
+  rownames_to_column("Variable")
+loadings <- loadings %>%
+  mutate(contributions = sqrt(PC1^2 + PC2^2),
+    Label = recode(Variable, !!!label_names))
+
+scale_factor <- 3
+
+loadings_scaled <- loadings %>%
+  mutate(PC1 = PC1 * scale_factor,
+    PC2 = PC2 * scale_factor)
+
+
+var_per <- summary(pca_resp)$importance[2, 1:2] * 100
+
+
+
+biplot_resp <- ggplot() +
+  # Points: each loc × rep
+  geom_point(
+    data = pca_scores,
+    aes(x = PC1, y = PC2),
+    size = 2.5,
+    shape = 21,
+    fill = "gray70",
+    color = "black",
+    alpha = 0.7
+  ) +
+  
+  geom_segment(
+    data = loadings_scaled,
+    aes(x = 0, y = 0, xend = PC1, yend = PC2),
+    arrow = arrow(length = unit(0.15, "cm")),
+    linewidth = 0.7,
+    colour = "#512888"
+  ) +
+  
+  # Labels for variables at arrow tips
+  geom_text_repel(
+    data = loadings_scaled,
+    aes(x = PC1, y = PC2, label = Label),
+    size = 3.5,
+    colour = "#512888",
+    max.overlaps = 20
+  ) +
+  
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.4) +
+  
+  xlab(paste0("PC1 (", round(var_per[1], 1), "%)")) +
+  ylab(paste0("PC2 (", round(var_per[2], 1), "%)")) +
+  
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "gray60", fill = NA, linewidth = 0.6),
+    text = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 11)
+  )
+
+print(biplot_resp)
+```
+## Results obtained for the PCA
+The PCA helps us to create two principal components that can served as an input for the other models. PC1 captures about 70% of the total variance (almost all due to slope and delta yield) and the components are related to the responsiveness of the sites, whereas PC2 is the intercept variable related to the baseline yield.
+
+## Potential issues with PCA
+It is more an exploratory analysis that help to understand the relationship between variables.
+
+
+# k-means
+
+```{r}
+library(NbClust)
+
+df_pca_subset <- pca_scores %>%
+  dplyr::select(PC1, PC2)
+
+set.seed(2025)
+
+n_clusters <- NbClust( data= df_pca_subset,
+  min.nc = 2,
+  max.nc = 8,
+  method = "kmeans")
+
+best_k <- n_clusters$Best.nc[1]
+
+
+set.seed(2025)
+
+final_kmeans <- kmeans(
+  x = df_pca_subset,
+  centers= best_k,
+  nstart= 25)
+
+
+pca_scores <- pca_scores %>%
+  mutate(cluster = factor(final_kmeans$cluster))
+
+
+cluster_plot <- ggplot(pca_scores, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.4) +
+  theme_bw() +
+  labs(x = "PC1 (P responsiveness)",
+    y = "PC2 (Baseline yield at 0 P)",
+    color = "Cluster",
+    title = "K means clusters in PCA response space")
+```
+# Results obtained with k-means
+The k-means analysis grouped wheat sites according to their phosphorus response patterns using the PCA-derived components (PC1 = responsiveness, PC2 = baseline yield). Based on the majority rule from NbClust, seven clusters were identified, resulting in a lot of variability among sites in both yield potential and magnitude of response to P fertilization. These clusters distinguished between strongly responsive sites, non-responsive sites, and several intermediate sites, including sites with low baseline yield but high responsiveness and sites with high baseline yield and minimal response. Overall, k-means provided a data-driven classification framework that captures differences across sites.
+
+# Potential issues with k-means
+The k-means can split or merge groups in ways that do not fully reflect agronomic reality. A few sites with extreme slope or delta-Y values can strongly influence where cluster centers are placed causing some moderate-response sites to be misclassified.
