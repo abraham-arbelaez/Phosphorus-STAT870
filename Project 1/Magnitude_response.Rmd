@@ -141,7 +141,7 @@ df_features <- df_slope %>%
 ```{r}
 # Components are intercept, slop and delta yield
 X_resp <- df_features %>%
-  dplyr::select(intercept, slope, delta_y) %>%  
+  dplyr::select(intercept, slope, STP,delta_y) %>%  
   drop_na() %>%
   scale() 
 
@@ -296,3 +296,149 @@ The k-means analysis grouped wheat sites according to their phosphorus response 
 
 # Potential issues with k-means
 The k-means can split or merge groups in ways that do not fully reflect agronomic reality. A few sites with extreme slope or delta-Y values can strongly influence where cluster centers are placed causing some moderate-response sites to be misclassified.
+
+# Archetypes
+```{r, warning=F}
+library(archetypes)
+
+df_pca_subset <- pca_scores %>%
+  dplyr::select(PC1, PC2) %>%
+  as.matrix() 
+
+set.seed(2025)
+
+k_vals <- 2:8
+
+as_step <- stepArchetypes(
+  data   = df_pca_subset,
+  k      = k_vals,
+  nrep   = 20,   
+  verbose = FALSE
+)
+
+screeplot(as_step)
+
+rss_k <- sapply(seq_along(k_vals), function(i) {
+  rss(bestModel(as_step[[i]]))
+})
+
+rss_k
+
+drops <- -diff(rss_k)
+
+best_index <- which.max(drops) + 1  
+best_k    <- k_vals[best_index]
+
+best_k
+
+# Best model
+final_arch <- bestModel(as_step[[best_index]])
+
+# Coefficients (
+alpha <- coef(final_arch)
+
+# Assign each obs to the archetype with the largest weight
+arch_cluster <- apply(alpha, 1, which.max)
+
+pca_scores <- pca_scores %>%
+  mutate(archetype = factor(arch_cluster))
+
+arch_points <- as.data.frame(parameters(final_arch))
+names(arch_points) <- c("PC1", "PC2")
+arch_points$archetype <- factor(1:nrow(arch_points))
+
+arch_plot <- ggplot() +
+  # Points: observations colored by closest archetype
+  geom_point(
+    data = pca_scores,
+    aes(x = PC1, y = PC2, color = archetype),
+    size  = 3,
+    alpha = 0.8
+  ) +
+  
+  scale_color_viridis_d()+
+  
+  # Archetypes: big yellow diamonds with labels
+  geom_point(
+    data = arch_points,
+    aes(x = PC1, y = PC2),
+    shape = 23,
+    fill  = "yellow",
+    color = "black",
+    size  = 6
+  ) +
+  geom_text(
+    data = arch_points,
+    aes(x = PC1, y = PC2, label = archetype),
+    vjust = -1.2,
+    size  = 5
+  ) +
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.4) +
+  theme_bw() +
+  labs(
+    x     = "PC1 (P responsiveness)",
+    y     = "PC2 (Baseline yield at 0 P)",
+    color = "Archetype",
+    title = "Archetype Analysis in PCA Response Space"
+  )
+
+arch_plot
+
+
+```
+
+
+# Fuzzy C-Means
+
+```{r}
+library(e1071)
+
+df_pca_subset <- pca_scores %>%
+  dplyr::select(PC1, PC2)
+
+set.seed(2025)
+
+
+fcm_fit <- e1071::cmeans(
+  x         = df_pca_subset,
+  centers   = best_k,
+  m         = 2,  
+  iter.max  = 100,
+  dist      = "euclidean",
+  method    = "cmeans"
+)
+
+
+fuzzy_cluster <- apply(fcm_fit$membership, 1, which.max)
+
+pca_scores <- pca_scores %>%
+  mutate(
+    fuzzy_cluster = factor(fuzzy_cluster),
+    max_membership = apply(fcm_fit$membership, 1, max) 
+  )
+
+
+fcm_plot <- ggplot(pca_scores,
+                   aes(x = PC1, y = PC2, color = fuzzy_cluster)) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_color_viridis_d()+
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.4) +
+  theme_bw() +
+  labs(
+    x     = "PC1 (P responsiveness)",
+    y     = "PC2 (Baseline yield at 0 P)",
+    color = "Fuzzy cluster",
+    title = "Fuzzy c-means clusters in PCA response space"
+  )
+
+
+fcm_plot
+
+
+# VISUALIZE SIDE BY SIDE
+library(patchwork)
+fcm_plot + arch_plot
+```
+
