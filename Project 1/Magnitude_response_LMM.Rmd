@@ -50,32 +50,48 @@ df_wheat <- df_wheat %>%
 The dataset analyzed in this study has 24 site years in which wheat grain yield was evaluated across increasing phosphorus fertilizer rates (P rate). The experimental structure follows a one-way factorial design, where the factor P rate includes four levels (0, 45, 90, and 135 kg P per hectare). At each site year, the experiment was arranged as a randomized complete block design with four replications. Within each replication, all four P rate treatments were applied, providing a balanced RCBD structure for analysis.
 
 The experiment model can be writen as: 
-$$ y_{ijk} = \mu + P_i + S_j + b_{k(j)} + \epsilon_{ijk}$$
+$$ y_{ijk} = \mu + p_i+ s_j + b_{k(j)}  + \epsilon_{ijk}$$
 where:
 $y_{ijk}$ is the wheat grain yield of the $i$th level
 $\mu$ is the overall mean
-$P_i$ is the fixed effect of the $i$th level of P rate
-$S_j$ is the random effect of the $j$th level of site-year
-$b_{k(j)}$ is the random effect of the block
-$\epsilon_{ijk}$ is the error residual component
+$pi_i$ is the treatment mean for the $i$th treatment ($i$= 1,2,3,4)
+$s_k$ is the random effect of the $k$th site-year ($k$= 1, 2,...24)
+$b_{j(k)}$ is the random effect of the $j$th block in the $k$th site-year ($j$= 1,2,3,4)
+$\epsilon_{ijk}$ is the residual error for the corresponding $i$th treatment, $j$th block, and $k$th site-year
 
  $$S_j \sim N(0, \sigma^2_s)$$  $$b_{k(j)}\sim N(0, \sigma^2_b)$$ $$ \varepsilon_{ijk} \sim N(0,\sigma^2_e),$$.
 
 ```{r}
-model <- lmer(yield ~ rate + (1 | location:rep), data = df_wheat, REML = TRUE)
-model
+model_1 <- lmer(yield ~ rate + (1 | location) + (1|location:rep), data = df_wheat)
+model_1
 
 ```
 
 ```{r}
-plot(simulateResiduals(model))
+plot(simulateResiduals(model_1))
 ```
 
 # Marginal means
 ```{r}
-emm <- emmeans(model, ~ rate)
-emm
+emm_1 <- emmeans(model_1, ~ rate)
+emm_1
 
-plot(emm)
+plot(emm_1)
+```
+```{r}
+model_2 <- lmer(yield ~ rate + (1|location:rep), data = df_wheat)
+model_2
+
 ```
 
+```{r}
+plot(simulateResiduals(model_2))
+```
+
+# Marginal means
+```{r}
+emm_2 <- emmeans(model_2, ~ rate)
+emm_2
+
+plot(emm_2)
+```
