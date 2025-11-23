@@ -1,0 +1,81 @@
+---
+title: "Magnitud response Mixed Model"
+author: "Abraham Arbelaez and Sofia Cominelli"
+date: "2025-11-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(janitor)
+library(ggrepel)
+library(lme4)
+library(DHARMa)
+library(emmeans)
+```
+
+## Read file
+```{r}
+df <- read_excel("P_kansas_wheat.xlsx") %>%
+  clean_names()
+
+```
+
+# Data wrangling
+```{r}
+df_wheat <- df %>%
+  select(year, loc_n, rep, plot, trt, source, p_kg, p_m_ppm, hg_kg_ha) %>%
+  filter(source %in% c("MAP", "Check")) %>%
+  rename(location = loc_n,
+         rate = p_kg,
+         soil_P = p_m_ppm,
+         yield = hg_kg_ha)
+
+
+df_wheat <- df_wheat %>%
+  mutate(location = factor(location),
+    rep= factor(rep),
+    rate= factor(rate))
+
+```
+
+# Model
+The dataset analyzed in this study has 24 site years in which wheat grain yield was evaluated across increasing phosphorus fertilizer rates (P rate). The experimental structure follows a one-way factorial design, where the factor P rate includes four levels (0, 45, 90, and 135 kg P per hectare). At each site year, the experiment was arranged as a randomized complete block design with four replications. Within each replication, all four P rate treatments were applied, providing a balanced RCBD structure for analysis.
+
+The experiment model can be writen as: 
+$$ y_{ijk} = \mu + P_i + S_j + b_{k(j)} + \epsilon_{ijk}$$
+where:
+$y_{ijk}$ is the wheat grain yield of the $i$th level
+$\mu$ is the overall mean
+$P_i$ is the fixed effect of the $i$th level of P rate
+$S_j$ is the random effect of the $j$th level of site-year
+$b_{k(j)}$ is the random effect of the block
+$\epsilon_{ijk}$ is the error residual component
+
+ $$S_j \sim N(0, \sigma^2_s)$$  $$b_{k(j)}\sim N(0, \sigma^2_b)$$ $$ \varepsilon_{ijk} \sim N(0,\sigma^2_e),$$.
+
+```{r}
+model <- lmer(yield ~ rate + (1 | location:rep), data = df_wheat, REML = TRUE)
+model
+
+```
+
+```{r}
+plot(simulateResiduals(model))
+```
+
+# Marginal means
+```{r}
+emm <- emmeans(model, ~ rate)
+emm
+
+plot(emm)
+```
+
