@@ -2,7 +2,9 @@
 title: "Magnitud response Mixed Model"
 author: "Abraham Arbelaez and Sofia Cominelli"
 date: "2025-11-21"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -19,6 +21,7 @@ library(ggrepel)
 library(lme4)
 library(DHARMa)
 library(emmeans)
+library(purrr)
 ```
 
 ## Read file
@@ -36,13 +39,15 @@ df_wheat <- df %>%
   rename(location = loc_n,
          rate = p_kg,
          soil_P = p_m_ppm,
-         yield = hg_kg_ha)
+         yield = hg_kg_ha) %>%
+  filter(!is.na(yield))
 
 
 df_wheat <- df_wheat %>%
   mutate(location = factor(location),
     rep= factor(rep),
-    rate= factor(rate))
+    rate= factor(rate),
+    rate_num = as.numeric(as.character(rate)))
 
 ```
 
@@ -62,7 +67,7 @@ $\epsilon_{ijk}$ is the residual error for the corresponding $i$th treatment, $j
  $$S_j \sim N(0, \sigma^2_s)$$  $$b_{k(j)}\sim N(0, \sigma^2_b)$$ $$ \varepsilon_{ijk} \sim N(0,\sigma^2_e),$$.
 
 ```{r}
-model_1 <- lmer(yield ~ rate + (1 | location) + (1|location:rep), data = df_wheat)
+model_1 <- lmer(yield ~ rate + (1 | location), data = df_wheat)
 model_1
 
 ```
@@ -78,20 +83,64 @@ emm_1
 
 plot(emm_1)
 ```
+## Site level means by rate
 ```{r}
-model_2 <- lmer(yield ~ rate + (1|location:rep), data = df_wheat)
-model_2
+site_rate_means <- df_wheat %>%
+  group_by(year, location, rate) %>%
+  summarise(mean_yield = mean(yield, na.rm = TRUE), .groups = "drop")
+
+site_means_wide <- site_rate_means %>%
+  mutate(rate_num = as.numeric(as.character(rate))) %>%
+  select(year, location, rate_num, mean_yield) %>%
+  tidyr::pivot_wider(
+    names_from  = rate_num,
+    values_from = mean_yield,
+    names_glue  = "mean_yield_{rate_num}"
+  ) %>%
+  mutate(control_yield= mean_yield_0,
+    max_yield= pmax(
+      mean_yield_0,
+      mean_yield_45,
+      mean_yield_90,
+      mean_yield_135,
+      na.rm = TRUE),
+    delta_yield= max_yield - control_yield,
+    relative_yield= dplyr::if_else(is.finite(max_yield) & max_yield > 0,100 * control_yield / max_yield, NA_real_))
+
 
 ```
 
+## Linear slope, intercept, STP per site year
 ```{r}
-plot(simulateResiduals(model_2))
+df_slope_site <- df_wheat %>%
+  group_by(year, location) %>%
+  nest() %>%
+  mutate(int_slope = map(data, ~ lm(yield ~ rate_num, data = .x)),
+    intercept = map_dbl(int_slope, ~ coef(.x)[["(Intercept)"]]),
+    slope= map_dbl(int_slope, ~ coef(.x)[["rate_num"]])) %>%
+  ungroup() %>%
+  select(year, location, intercept, slope)
+
+stp_site <- df_wheat %>%
+  group_by(year, location) %>%
+  summarise(STP = mean(soil_P, na.rm = TRUE), .groups = "drop")
+
+df_slope_site <- df_slope_site %>%
+  left_join(stp_site, by = c("year", "location")) %>%
+  mutate(site_id = paste0(year, "_", location))
+
+p_max <- max(df_wheat$rate_num, na.rm = TRUE)
+
+df_features_site <- df_slope_site %>%
+  mutate(delta_y = slope * p_max) %>%
+  select(year, location, site_id, intercept, slope, STP, delta_y)
 ```
 
-# Marginal means
+## Site info table
 ```{r}
-emm_2 <- emmeans(model_2, ~ rate)
-emm_2
+site_metrics <- site_means_wide %>%
+  left_join(df_features_site, by = c("year", "location"))
 
-plot(emm_2)
 ```
+
+
