@@ -1,0 +1,343 @@
+---
+title: "Unsupervised Machine Learning...not finished yet"
+author: "Sofia Cominelli and Abraham Arbelaez"
+date: "2025-11-21"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(janitor)
+library(ggrepel)
+library(lme4)
+library(DHARMa)
+library(emmeans)
+library(purrr)
+```
+
+## Read file
+```{r}
+df <- read_excel("P_kansas_wheat.xlsx") %>%
+  clean_names()
+
+```
+
+# Data wrangling
+```{r}
+df_wheat <- df %>%
+  select(year, loc_n, rep, plot, trt, source, p_kg, p_m_ppm, hg_kg_ha) %>%
+  filter(source %in% c("MAP", "Check")) %>%
+  rename(location = loc_n,
+         rate = p_kg,
+         soil_P = p_m_ppm,
+         yield = hg_kg_ha) %>%
+  filter(!is.na(yield))
+
+
+df_wheat <- df_wheat %>%
+  mutate(location = factor(location),
+    rep= factor(rep),
+    rate= factor(rate),
+    rate_num = as.numeric(as.character(rate)))
+
+```
+
+
+```{r}
+library(tidyverse)
+library(cluster)
+library(e1071)
+library(archetypes)
+
+# Mean yield for each rate and location
+site_rate_means <- df_wheat %>%
+  group_by(year, location, rate) %>%
+  summarise(mean_yield = mean(yield), .groups = "drop")
+
+# wide format :)
+site_means_wide <- site_rate_means %>%
+  mutate(rate_num = as.numeric(as.character(rate))) %>%
+  select(year, location, rate_num, mean_yield) %>%
+  pivot_wider(
+    names_from = rate_num,
+    values_from = mean_yield,
+    names_glue = "yield_{rate_num}"
+  ) %>%
+  drop_na()  # keep only complete sites
+
+```
+
+```{r}
+X <- site_means_wide %>%
+  select(starts_with("yield_")) %>%
+  scale() %>%
+  as.matrix()
+```
+
+```{r}
+set.seed(2025)
+
+k_range <- 2:6
+
+kmeans_models <- lapply(k_range, function(k) {
+  kmeans(X, centers = k, nstart = 50)
+})
+
+# Example: choose k = 3 clusters
+kmeans_clusters <- kmeans_models[[2]]$cluster
+
+```
+
+```{r}
+fcm_models <- lapply(k_range, function(k) {
+  cmeans(X, centers = k, m = 2)
+})
+
+# Hard clustering from membership
+fcm_clusters <- apply(fcm_models[[2]]$membership, 1, which.max)
+
+```
+
+```{r}
+set.seed(2025)
+
+arc_models <- lapply(k_range, function(k) {
+  archetypes(X, k, verbose = FALSE)
+})
+
+arc_coefs <- coef(arc_models[[2]])  # k = 3 if k_range <- 2:6
+arc_clusters <- max.col(arc_coefs)
+
+```
+
+```{r}
+cluster_results <- site_means_wide %>%
+  mutate(
+    kmeans = kmeans_clusters,
+    fuzzy  = fcm_clusters,
+    arc    = arc_clusters
+  )
+
+View(cluster_results)
+
+```
+
+
+```{r}
+cluster_results2 <- cluster_results %>%
+  mutate(delta_y = yield_135 - yield_0)
+
+```
+
+```{r}
+kmeans_map <- cluster_results2 %>%
+  group_by(kmeans) %>%
+  summarise(
+    mean_delta = mean(delta_y)
+  ) %>%
+  arrange(mean_delta) %>%
+  mutate(response_class = case_when(
+    row_number() == 1 ~ "Low response",
+    row_number() == 2 ~ "Moderate response",
+    row_number() == 3 ~ "High response"
+  ))
+
+```
+
+```{r}
+fuzzy_map <- cluster_results2 %>%
+  group_by(fuzzy) %>%
+  summarise(
+    mean_delta = mean(delta_y)
+  ) %>%
+  arrange(mean_delta) %>%
+  mutate(response_class = case_when(
+    row_number() == 1 ~ "Low response",
+    row_number() == 2 ~ "Moderate response",
+    row_number() == 3 ~ "High response"
+  ))
+
+```
+
+```{r}
+arc_map <- cluster_results2 %>%
+  group_by(arc) %>%
+  summarise(
+    mean_delta = mean(delta_y)
+  ) %>%
+  arrange(mean_delta) %>%
+  mutate(response_class = case_when(
+    row_number() == 1 ~ "Low response",
+    row_number() == 2 ~ "Moderate response",
+    row_number() == 3 ~ "High response"
+  ))
+
+
+```
+
+```{r}
+cluster_results_labeled <- cluster_results2 %>%
+  left_join(
+    kmeans_map %>% select(kmeans, response_class),
+    by = "kmeans"
+  )
+
+cluster_results_labeled <- cluster_results_labeled %>%
+  left_join(
+    fuzzy_map %>% select(fuzzy, fuzzy_response = response_class),
+    by = "fuzzy"
+  ) %>%
+  left_join(
+    arc_map %>% select(arc, arc_response = response_class),
+    by = "arc"
+  )
+
+
+```
+
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# add delta_y (response)
+cluster_results2 <- cluster_results %>%
+  mutate(delta_y = yield_135 - yield_0)
+
+make_response_map <- function(df, cluster_col) {
+  df %>%
+    group_by(.data[[cluster_col]]) %>%
+    summarise(mean_delta = mean(delta_y), .groups = "drop") %>%
+    arrange(mean_delta) %>%
+    mutate(response_class = case_when(
+      row_number() == 1 ~ "Low response",
+      row_number() == 2 ~ "Moderate response",
+      row_number() == 3 ~ "High response"
+    ))
+}
+
+kmeans_map <- make_response_map(cluster_results2, "kmeans") %>%
+  rename(cluster = kmeans)
+
+fuzzy_map  <- make_response_map(cluster_results2, "fuzzy") %>%
+  rename(cluster = fuzzy)
+
+arc_map    <- make_response_map(cluster_results2, "arc") %>%
+  rename(cluster = arc)
+
+cluster_labeled <- cluster_results2 %>%
+  left_join(kmeans_map, by = c("kmeans" = "cluster")) %>%
+  rename(kmeans_resp = response_class) %>%
+  left_join(fuzzy_map,  by = c("fuzzy" = "cluster")) %>%
+  rename(fuzzy_resp  = response_class) %>%
+  left_join(arc_map,    by = c("arc" = "cluster")) %>%
+  rename(arc_resp    = response_class)
+
+# helper to compute centroids for one method
+centroids_method <- function(df, resp_col, method_name){
+  df %>%
+    group_by(.data[[resp_col]]) %>%
+    summarise(
+      y0   = mean(yield_0),
+      y45  = mean(yield_45),
+      y90  = mean(yield_90),
+      y135 = mean(yield_135),
+      .groups = "drop"
+    ) %>%
+    rename(response_class = .data[[resp_col]]) %>%
+    pivot_longer(
+      cols = starts_with("y"),
+      names_to = "rate",
+      values_to = "yield"
+    ) %>%
+    mutate(
+      rate = recode(rate,
+                    "y0"   = 0,
+                    "y45"  = 45,
+                    "y90"  = 90,
+                    "y135" = 135),
+      method = method_name
+    )
+}
+
+centroids_kmeans <- centroids_method(cluster_labeled, "kmeans_resp", "k-means")
+centroids_fuzzy  <- centroids_method(cluster_labeled, "fuzzy_resp",  "Fuzzy c-means")
+centroids_arc    <- centroids_method(cluster_labeled, "arc_resp",    "Archetypes")
+
+centroids_all <- bind_rows(centroids_kmeans, centroids_fuzzy, centroids_arc)
+
+```
+
+
+```{r}
+ggplot(centroids_all,
+       aes(x = rate, y = yield,
+           color = response_class,
+           group = response_class)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2.8) +
+  facet_wrap(~ method) +
+  labs(
+    x = "P rate (kg P ha^-1)",
+    y = "Mean yield (kg ha^-1)",
+    color = "Response class",
+    title = "Comparison of High, Moderate, and Low response clusters\nacross three classification methods"
+  ) +
+  theme_minimal(base_size = 14)
+
+```
+
+
+
+```{r}
+kmeans_df <- cluster_results2 %>%
+  left_join(kmeans_map, by = c("kmeans" = "cluster")) %>%
+  rename(response_class = response_class)
+
+fuzzy_df <- cluster_results2 %>%
+  left_join(fuzzy_map, by = c("fuzzy" = "cluster")) %>%
+  rename(response_class = response_class)
+
+arc_df <- cluster_results2 %>%
+  left_join(arc_map, by = c("arc" = "cluster")) %>%
+  rename(response_class = response_class)
+
+centroids_kmeans <- centroids_method(kmeans_df, "response_class", "k-means")
+centroids_fuzzy  <- centroids_method(fuzzy_df,  "response_class", "Fuzzy c-means")
+centroids_arc    <- centroids_method(arc_df,    "response_class", "Archetypes")
+
+```
+
+
+```{r}
+centroids_all <- bind_rows(
+  centroids_kmeans,
+  centroids_fuzzy,
+  centroids_arc
+)
+
+```
+
+```{r}
+ggplot(centroids_all,
+       aes(x = rate, y = yield,
+           color = response_class, group = response_class)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2.8) +
+  facet_wrap(~ method) +
+  labs(
+    x = "P rate (kg P ha^-1)",
+    y = "Mean yield (kg ha^-1)",
+    color = "Response class",
+    title = "Comparison of High, Moderate, and Low response clusters\nacross three classification methods"
+  ) +
+  theme_minimal(base_size = 14)
+
+```
+
+
