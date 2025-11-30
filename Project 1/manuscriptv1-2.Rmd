@@ -1,0 +1,158 @@
+---
+title: "Magnitude of response for Soil Test P"
+author: "Sofia Cominelli, Abraham Arbelaez"
+fontsize: 12pt
+geometry: margin=1in
+output:
+  pdf_document:
+    includes:
+      in_header: header.tex
+    number_sections: true
+abstract: |
+  Phosphorus (P) fertilization decisions in wheat production often rely on soil
+  test categories that may not fully capture variability in yield responses
+  across sites. In this study, we analyze Kansas winter wheat P trials from 24
+  site-years to evaluate whether unsupervised learning methods can identify
+  consistent patterns in yield response to P rate. We first fit a linear mixed
+  model to quantify overall yield trends across locations, then apply k-means,
+  fuzzy c-means, and archetype analysis to site-level response profiles.
+  Our goal is to compare how well these approaches produce agronomically
+  interpretable groupings that could support improved fertilizer recommendations.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Introduction
+Phosphorus (P) is an essential macronutrient for crop growth, and profitable crop production depends on maintaining adequate levels of P and other nutrients. Effective planning of P fertilization has become increasingly important because grain and fertilizer prices are highly variable, and because public concern is growing regarding water quality and environmental impacts associated with P losses from agricultural fields.
+
+Soil testing is a useful, although imperfect, diagnostic tool that guides P fertilizer recommendations. The process begins with collecting a soil sample, typically from the 0 to 15 cm depth. The soil test method then attempts to extract a portion of the soil P that is proportional to the P available for crop uptake. This extracted fraction represents only a small part of the total P in the soil, and it can vary across soil types, management histories, and environmental conditions.
+
+For soil testing to be useful within a given region, the soil test must be calibrated. Calibration involves identifying the soil test level or range that separates responsive from non-responsive soils (the critical level or critical range), and determining the fertilizer rate required for each soil test category. Soil test interpretation commonly groups soils into categories such as very low, low, optimum, high, and very high, each defined by the probability that a site will respond to P fertilization.
+
+As soil test levels increase, both the probability of observing a yield response and the magnitude of the expected response decline. Previous research has shown that the percentage of P applications that result in yield increases is approximately 80 percent for very low soil test P, 65 percent for low, 25 percent for optimum, 5 percent for high, and less than 1 percent for very high.
+
+In this context, our objective is to evaluate unsupervised learning methods for detecting patterns in wheat yield responses to phosphorus fertilization across Kansas sites. We compare k-means clustering ([Likas et al., 2003](https://doi.org/10.1016/S0031-3203(02)00060-2)), fuzzy c-means ([Bezdek et al., 1984](https://doi.org/10.1016/0098-3004(84)90020-7)), and archetype analysis ([Cutler and Breiman, 1994](https://doi.org/10.1080/00401706.1994.10485840)) to assess how consistently each method captures meaningful site groupings. By linking the resulting clusters to expert agronomic interpretation, we aim to identify which approaches provide the most informative and reliable guidance for phosphorus fertilizer management.
+
+
+\section{Materials and Methods}
+
+\subsection{Dataset}
+
+The dataset for this project comes from Kansas winter wheat phosphorus (P) fertilization
+trials conducted in 2019 and 2020. Across both years, 24 site--years were included.
+Phosphorus was applied as monoammonium phosphate (MAP), with four replications per
+site--year. Application rates were 0, 45, 90, and 135 kg P ha$^{-1}$. For the present
+analysis, we used only plots that received MAP or served as unfertilized checks.
+
+\subsection{Mixed-effects model for yield response}
+
+Grain yield response to P fertilization was first analyzed using a linear mixed-effects
+model to quantify overall yield trends across environments. Phosphorus rate
+(0, 45, 90, 135 kg P ha$^{-1}$) was treated as a fixed categorical effect, and site--year
+was included as a random effect to account for differences among locations and seasons.
+Blocks (replications) were modeled as random effects nested within site--year to reflect
+the randomized complete block design. The model was fitted using restricted maximum
+likelihood (REML) with the \texttt{lmer} function from the \texttt{lme4} package in R.
+An ANOVA table for the fixed effect of P rate was obtained using Type~III F--tests with
+the Kenward--Roger approximation for denominator degrees of freedom. Model assumptions
+were evaluated using simulation-based residual diagnostics from the \texttt{DHARMa}
+package. Estimated marginal means of grain yield for each P rate were obtained with
+the \texttt{emmeans} package and used to describe the overall yield response to P across
+sites. The R code used to fit the model and extract the ANOVA table and marginal means
+is provided in the Supplementary Material.
+
+\subsubsection{Statistical model}
+
+Let $y_{ijk}$ denote grain yield observed at phosphorus rate $i$ in block $k$ of
+site--year $j$, where $i = 1,\dots,4$ (0, 45, 90, 135 kg P ha$^{-1}$),
+$j = 1,\dots,J$ site--years, and $k = 1,\dots,K$ blocks within each site--year.
+The linear mixed-effects model is
+\[
+y_{ijk} = \mu + \tau_i + s_j + b_{k(j)} + \varepsilon_{ijk},
+\]
+where $\mu$ is the overall mean, $\tau_i$ is the fixed effect of the $i$th P rate,
+$s_j \sim \text{Normal}(0,\sigma_s^2)$ is the random effect of site--year $j$,
+$b_{k(j)} \sim \text{Normal}(0,\sigma_b^2)$ is the random effect of block $k$ nested
+within site--year $j$, and $\varepsilon_{ijk} \sim \text{Normal}(0,\sigma^2)$ is the
+residual error. All random effects are assumed independent.
+
+\subsection{Unsupervised machine learning}
+
+To explore patterns in site-level yield response to P, we constructed a response vector
+for each site by averaging yield within rate and arranging the means as
+$(\text{yield}_0,\text{yield}_{45},\text{yield}_{90},\text{yield}_{135})$.
+These four-dimensional vectors were standardized to zero mean and unit variance before
+clustering.
+
+\subsubsection{K-means clustering}
+
+K-means clustering was applied to the standardized site-level response vectors for
+$k = 2,\dots,6$. For each $k$, we used 50 random starts and retained the solution with
+the smallest within-cluster sum of squares. The number of clusters was selected using a
+combination of elbow plots and the silhouette index.
+
+\subsubsection{Fuzzy c-means}
+
+Fuzzy c-means clustering was also fitted for $k = 2,\dots,6$ with fuzzification parameter
+$m = 2$. This method provides membership probabilities of each site to each cluster,
+allowing identification of sites with ambiguous response patterns. Membership matrices
+were summarized to evaluate cluster separation and site-level uncertainty.
+
+\subsubsection{Archetype analysis}
+
+Finally, we used archetype analysis to represent each site as a convex combination of a
+small set of extreme yield-response profiles. Models with 2--6 archetypes were fitted,
+each with multiple random starts to reduce sensitivity to initialization. The estimated
+archetypes were interpreted as idealized response shapes, and site coefficients were used
+to assign locations to the dominant archetype and to compare response patterns across
+methods.
+
+
+# Results
+
+During model selection, we compared two mixed-effects models: one that included only a random intercept for location, and a second that incorporated the full RCBD structure with blocks nested within locations. The simpler model, produced clean residual diagnostics with no evidence of non-normality, dispersion issues, or heteroskedasticity. In contrast, the RCBD-consistent model showed a significant Kolmogorov–Smirnov test ($p =$ 0.029; DHARMa diagnostics), indicating deviations from the expected residual distribution. This suggests that the block-level random effect added noise without improving model fit. Because the block variance was negligible and the model with only a location random effect exhibited superior diagnostic performance, we selected the simpler model for all subsequent inference on phosphorus rate effects.
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(janitor)
+library(ggrepel)
+library(lme4)
+library(DHARMa)
+library(emmeans)
+library(purrr)
+
+df <- read_excel("P_kansas_wheat.xlsx") %>%
+  clean_names()
+
+df_wheat <- df %>%
+  select(year, loc_n, rep, plot, trt, source, p_kg, p_m_ppm, hg_kg_ha) %>%
+  filter(source %in% c("MAP", "Check")) %>%
+  rename(location = loc_n,
+         rate = p_kg,
+         soil_P = p_m_ppm,
+         yield = hg_kg_ha) %>%
+  filter(!is.na(yield))
+
+df_wheat <- df_wheat %>%
+  mutate(location = factor(location),
+    rep= factor(rep),
+    rate= factor(rate),
+    rate_num = as.numeric(as.character(rate)))
+
+model_1 <- lmer(yield ~ rate + (1 | location), data = df_wheat)
+model_1
+
+plot(simulateResiduals(model_1))
+```
+
+
+# Discussion
+
+Although the experimental design follows a randomized complete block structure within each site-year, the inclusion of the block-level random effect did not improve the mixed model's performance. The RCBD model failed the DHARMa Kolmogorov–Smirnov test, indicating non-uniformity of scaled residuals, while the simpler model with only a location random intercept satisfied all diagnostic checks. This result suggests that block-to-block variation within locations was minimal compared with the large environmental variability captured at the site-year level. In multi-environment agronomic trials, it is common for the block effect to be negligible, particularly when replications are conducted under relatively uniform field conditions. Given the better statistical properties of the simpler model and the absence of meaningful block variance, we retained the model with a single random intercept for location. This choice aligns the analytical strategy with both empirical evidence from residual diagnostics and established mixed-model practice in large multi-environment crop trials.
+
+# Conclusion
