@@ -1,0 +1,404 @@
+---
+title: "Magnitude of response for Soil Test P"
+author: "Sofia Cominelli, Abraham Arbelaez"
+fontsize: 12pt
+geometry: margin=1in
+output:
+  pdf_document:
+    includes:
+      in_header: header.tex
+    number_sections: true
+abstract: |
+  Phosphorus (P) fertilization decisions in wheat production often rely on soil
+  test categories that may not fully capture variability in yield responses
+  across sites. In this study, we analyze Kansas winter wheat P trials from 24
+  site-years to evaluate whether unsupervised learning methods can identify
+  consistent patterns in yield response to P rate. We first fit a linear mixed
+  model to quantify overall yield trends across locations, then apply k-means,
+  fuzzy c-means, and archetype analysis to site-level response profiles.
+  Our goal is to compare how well these approaches produce agronomically
+  interpretable groupings that could support improved fertilizer recommendations.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Introduction
+Phosphorus (P) is an essential macronutrient for crop growth, and profitable crop production depends on maintaining adequate levels of P and other nutrients. Effective planning of P fertilization has become increasingly important because grain and fertilizer prices are highly variable, and because public concern is growing regarding water quality and environmental impacts associated with P losses from agricultural fields.
+
+Soil testing is a useful, although imperfect, diagnostic tool that guides P fertilizer recommendations. The process begins with collecting a soil sample, typically from the 0 to 15 cm depth. The soil test method then attempts to extract a portion of the soil P that is proportional to the P available for crop uptake. This extracted fraction represents only a small part of the total P in the soil, and it can vary across soil types, management histories, and environmental conditions.
+
+For soil testing to be useful within a given region, the soil test must be calibrated. Calibration involves identifying the soil test level or range that separates responsive from non-responsive soils (the critical level or critical range), and determining the fertilizer rate required for each soil test category. Soil test interpretation commonly groups soils into categories such as very low, low, optimum, high, and very high, each defined by the probability that a site will respond to P fertilization.
+
+As soil test levels increase, both the probability of observing a yield response and the magnitude of the expected response decline. Previous research has shown that the percentage of P applications that result in yield increases is approximately 80 percent for very low soil test P, 65 percent for low, 25 percent for optimum, 5 percent for high, and less than 1 percent for very high.
+
+In this context, our objective is to evaluate unsupervised learning methods for detecting patterns in wheat yield responses to phosphorus fertilization across Kansas sites. We compare k-means clustering ([Likas et al., 2003](https://doi.org/10.1016/S0031-3203(02)00060-2)), fuzzy c-means ([Bezdek et al., 1984](https://doi.org/10.1016/0098-3004(84)90020-7)), and archetype analysis ([Cutler and Breiman, 1994](https://doi.org/10.1080/00401706.1994.10485840)) to assess how consistently each method captures meaningful site groupings. By linking the resulting clusters to expert agronomic interpretation, we aim to identify which approaches provide the most informative and reliable guidance for phosphorus fertilizer management.
+
+
+\section{Materials and Methods}
+
+\subsection{Dataset}
+
+The dataset for this project comes from Kansas winter wheat phosphorus (P) fertilization
+trials conducted in 2019 and 2020. Across both years, 24 site--years were included.
+Phosphorus was applied as monoammonium phosphate (MAP), with four replications per
+site--year. Application rates were 0, 45, 90, and 135 kg P ha$^{-1}$. For the present
+analysis, we used only plots that received MAP or served as unfertilized checks.
+
+\subsection{Mixed-effects model for yield response}
+
+Grain yield response to P fertilization was first analyzed using a linear mixed-effects
+model to quantify overall yield trends across environments. Phosphorus rate
+(0, 45, 90, 135 kg P ha$^{-1}$) was treated as a fixed categorical effect, and site--year
+was included as a random effect to account for differences among locations and seasons.
+Blocks (replications) were modeled as random effects nested within site--year to reflect
+the randomized complete block design. The model was fitted using restricted maximum
+likelihood (REML) with the \texttt{lmer} function from the \texttt{lme4} package in R.
+An ANOVA table for the fixed effect of P rate was obtained using Type~III F--tests with
+the Kenward--Roger approximation for denominator degrees of freedom. Model assumptions
+were evaluated using simulation-based residual diagnostics from the \texttt{DHARMa}
+package. Estimated marginal means of grain yield for each P rate were obtained with
+the \texttt{emmeans} package and used to describe the overall yield response to P across
+sites. The R code used to fit the model and extract the ANOVA table and marginal means
+is provided in the Supplementary Material.
+
+\subsubsection{Statistical model}
+
+Let $y_{ijk}$ denote grain yield observed at phosphorus rate $i$ in block $k$ of
+site--year $j$, where $i = 1,\dots,4$ (0, 45, 90, 135 kg P ha$^{-1}$),
+$j = 1,\dots,J$ site--years, and $k = 1,\dots,K$ blocks within each site--year.
+The linear mixed-effects model is
+\[
+y_{ijk} = \mu + \tau_i + s_j + b_{k(j)} + \varepsilon_{ijk},
+\]
+where $\mu$ is the overall mean, $\tau_i$ is the fixed effect of the $i$th P rate,
+$s_j \sim \text{Normal}(0,\sigma_s^2)$ is the random effect of site--year $j$,
+$b_{k(j)} \sim \text{Normal}(0,\sigma_b^2)$ is the random effect of block $k$ nested
+within site--year $j$, and $\varepsilon_{ijk} \sim \text{Normal}(0,\sigma^2)$ is the
+residual error. All random effects are assumed independent.
+
+\subsection{Cate-Nelson Procedure}
+
+To identify a soil phosphorus (P) critical level, we first implemented the classical Cate and Nelson (1965) method with the \texttt{soiltestcorr} package (Correndo et al, 2023). Relative yield (RY) was plotted against soil test P (STP), and a 95\% RY cutoff was used to distinguish responsive from non-responsive observations. The algorithm searches for the soil test value that maximizes the number of correct classifications relative to this target. The resulting critical soil test value (CSTV) was marked by a vertical dashed line, and the 95\% RY threshold was shown as a horizontal reference.
+
+Because observations with STP $> 46.4$ ppm consistently exhibited non-response, clustering analyses were restricted to STP $< 46.4$ ppm to avoid high-P plateau effects that bias unsupervised algorithms. Then, we applied three different unsupervised machine learning techniques that will be shown in the next subsections.
+
+\subsubsection{K-means Clustering}
+
+To derive data-driven soil P classes, we fitted K-means clustering using soil P as the sole feature, ensuring that resulting partitions aligned with axis-parallel thresholds. The optimal number of clusters was evaluated via the within-cluster sum of squares (elbow method) and silhouette width, both of which indicated diminishing improvement beyond $k=3$. Thus, K-means was fitted with $k=3$ clusters and 25 random starts for stability.
+
+Cluster boundaries were defined as midpoints between sorted centroids:
+\[
+\text{Boundary}_i = \frac{c_i + c_{i+1}}{2},
+\]
+where $c_i$ denotes the centroid of cluster $i$.
+
+\subsubsection{Fuzzy C-means Clustering}
+
+Fuzzy C-means (FCM) clustering was applied to the same soil P values using $k=3$ clusters and a fuzziness parameter $m=2$. Unlike K-means, FCM produces membership coefficients in $[0,1]$, allowing observations to partially belong to multiple fertility classes. Hard assignments for visualization were obtained by taking the cluster with maximum membership. As with K-means, boundaries were computed as midpoints between sorted fuzzy centroids.
+
+\subsubsection{Archetype Analysis}
+
+Archetype analysis was applied to a two-dimensional feature set consisting of soil P and relative yield. Archetypes are convex combinations of extreme points in the data cloud and capture distinct, biologically interpretable soil P--response profiles. A three-archetype model was selected to facilitate comparison with the $k=3$ clustering schemes.
+
+For each observation, archetype membership was determined using the maximal $\alpha$-coefficient. Because archetypes exist in two-dimensional space and do not yield axis-aligned thresholds, group medians of soil P were computed for each archetype and projected onto the soil P axis. Midpoints between these medians were used to approximate vertical boundaries.
+
+
+# Results
+
+During model selection, we compared two mixed-effects models: one that included only a random intercept for location, and a second that incorporated the full RCBD structure with blocks nested within locations. The simpler model, produced clean residual diagnostics with no evidence of non-normality, dispersion issues, or heteroskedasticity. In contrast, the RCBD-consistent model showed a significant Kolmogorov–Smirnov test ($p =$ 0.029; DHARMa diagnostics), indicating deviations from the expected residual distribution. This suggests that the block-level random effect added noise without improving model fit. Because the block variance was negligible and the model with only a location random effect exhibited superior diagnostic performance, we selected the simpler model for all subsequent inference on phosphorus rate effects.
+
+The mixed-effects ANOVA indicated a highly significant effect of phosphorus application rate on wheat yield. The rate term explained a large proportion of the variation in yield (Sum Sq $= 61.9$ million; F = $88.49$, df $= 3, 311.0$; $p < 0.0001$), demonstrating that yield responses differed strongly across the four phosphorus levels. Because the model included a random effect for location, these results reflect treatment differences after accounting for site-to-site variability. Overall, phosphorus rate was the dominant driver of yield variation in this dataset.
+
+The Cate--Nelson method identified a CSTV of 46.4 ppm, above which nearly all observations achieved at least 95\% RY. Below this threshold, substantial variation in yield response to P was observed, justifying the use of unsupervised learning to identify latent fertility classes.
+
+\subsection{K-means Clustering}
+
+K-means partitioned the soil P distribution into three distinct classes with boundaries at approximately
+\[
+13.7 \text{ ppm} \quad \text{and} \quad 25.2 \text{ ppm}.
+\]
+The lowest class was associated with consistently reduced RY (20--50\%), the intermediate class displayed moderate variability, and the highest class contained most observations above 80\% RY. These clusters correspond to intuitive ``low,'' ``medium,'' and ``adequate'' soil P categories.
+
+\subsection{Fuzzy C-means}
+
+Fuzzy C-means identified nearly identical centroids and boundaries:
+\[
+13.7 \text{ ppm} \quad \text{and} \quad 25.3 \text{ ppm}.
+\]
+Membership coefficients revealed smooth transitions between low and medium P, indicating that several plots possess intermediate fertility characteristics rather than discrete class membership. Nevertheless, hard cluster assignments produced groupings closely aligned with K-means.
+
+\subsection{Archetype Analysis}
+
+Archetype analysis identified three extreme soil P--RY profiles: (1) low P with low yield, (2) intermediate P with moderate-to-high yield, and (3) high P with consistently high yield. Projection onto the soil P axis produced boundary estimates of
+\[
+14.6 \text{ ppm} \quad \text{and} \quad 25.3 \text{ ppm},
+\]
+remarkably similar to those obtained from K-means and FCM despite being derived from a two-dimensional representation of the response surface.
+
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+#### LINEAR MIXED MODEL
+
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(janitor)
+library(ggrepel)
+library(lme4)
+library(DHARMa)
+library(emmeans)
+library(purrr)
+
+library(knitr)
+library(kableExtra)
+library(lmerTest)
+
+df <- read_excel("P_kansas_wheat.xlsx") %>%
+  clean_names()
+
+df_wheat <- df %>%
+  select(year, loc_n, rep, plot, trt, source, p_kg, p_m_ppm, hg_kg_ha) %>%
+  filter(source %in% c("MAP", "Check")) %>%
+  rename(location = loc_n,
+         rate = p_kg,
+         soil_P = p_m_ppm,
+         yield = hg_kg_ha) %>%
+  filter(!is.na(yield))
+
+df_wheat <- df_wheat %>%
+  mutate(location = factor(location),
+    rep= factor(rep),
+    rate= factor(rate),
+    rate_num = as.numeric(as.character(rate)))
+
+model_1 <- lmer(yield ~ rate + (1 | location), data = df_wheat)
+model_1
+
+## ANOVA
+anova_table <- anova(model_1, type = 3)
+
+anova_df <- as.data.frame(anova_table)
+anova_df <- tibble::rownames_to_column(anova_df, var = "Source")
+```
+
+
+```{r, echo = F}
+### OUTPUTS
+anova_df %>%
+  kable(
+    format   = "latex",
+    booktabs = TRUE,
+    caption  = "Analysis of variance for the linear mixed model",
+    label    = "anova_lmm"
+  ) %>%
+  kable_styling(latex_options = "hold_position")
+
+
+plot(simulateResiduals(model_1))
+```
+
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+#### MACHINE LEARNING
+
+library(tidyverse)
+library(cluster)
+library(e1071)
+library(archetypes)
+library(factoextra)
+library(ggplot2)
+library(gridExtra)
+library(soiltestcorr)
+
+df_wheat <- df %>%
+  select(year, loc_n, rep, plot, trt, source, p_kg, p_m_ppm, hg_kg_ha) %>%
+  filter(source %in% c("MAP", "Check")) %>%
+  rename(location = loc_n,
+         rate = p_kg,
+         soil_P = p_m_ppm,
+         yield = hg_kg_ha) %>%
+  filter(!is.na(yield))
+
+
+df_wheat <- df_wheat %>%
+  mutate(location = factor(location),
+    rep= factor(rep),
+    rate= factor(rate),
+    rate_num = as.numeric(as.character(rate)))
+
+bestdf <- 
+  df_wheat %>%
+  group_by(soil_P, rep) %>%
+  mutate(yield_control = ifelse(rate_num == 0, yield, 0)) %>%
+  mutate(yield_control = ifelse(yield_control == 0, max(yield_control), max(yield_control))) %>%
+  mutate(yield_max = max(yield)) %>%
+  mutate(yield_135 = ifelse(rate_num == 135, yield, 0)) %>%
+  mutate(yield_135 = ifelse(yield_135 == 0, max(yield_135), max(yield_135)))
+
+
+### RELATIVE YIELD for R_0/R_135
+rydf <- bestdf[,c("year", "location", "rep", "soil_P", "rate_num", "yield_control", "yield_135")]
+
+rydf <- rydf %>%
+  group_by(location,rep, soil_P) %>%
+  summarise(yield_control = mean(yield_control),
+            yield_135 = mean(yield_135),.groups = "drop")
+
+rydf$ry <- (rydf$yield_control/rydf$yield_135)*100
+
+
+### RELATIVE YIELD for R_0/R_max
+dfry <- bestdf[,c("year", "location", "rep", "soil_P", "rate_num", "yield_control", "yield_max")]
+
+dfry <- dfry %>%
+  group_by(location,rep, soil_P) %>%
+  summarise(yield_control = mean(yield_control),
+            yield_max = mean(yield_max),.groups = "drop")
+
+dfry$ry <- (dfry$yield_control/dfry$yield_max)*100
+
+
+df_clusters <- dfry %>% select(ry, soil_P)
+
+df_scaled <- scale(df_clusters)
+
+```
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+##### CATE AND NELSON
+cate_nelson_1965(df_clusters, stv = soil_P, ry = ry, target = 95, plot = T)
+
+cate_df <- df_clusters %>%
+  filter(soil_P < 46.4)
+
+cate_scaled <- scale(cate_df)
+
+### KMEANS
+#fviz_nbclust(cate_scaled, kmeans, method = "wss")
+
+#fviz_nbclust(cate_scaled, kmeans, method = "silhouette")
+
+set.seed(123)
+km <- kmeans(cate_df$soil_P, centers = 3, nstart = 25)
+
+cate_df$Kmeans <- factor(km$cluster)
+
+centers <- sort(km$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+a <- ggplot(cate_df, aes(x = soil_P, y = ry, color = Kmeans)) +
+  geom_point(size = 1) +
+  geom_vline(xintercept = boundaries, 
+             linetype = "dashed", color = "black") +
+  theme_bw() +
+  geom_text(data = data.frame(x = boundaries, y = max(cate_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            color = "black", vjust = -0.5, size = 3)+
+  labs(title = "K-means")+
+  xlab("Soil test value") + 
+  ylab("Relative yield (%)")
+
+
+
+### FUZZY C-MEANS
+set.seed(123)
+fcm <- cmeans(cate_df$soil_P, centers = 3, m = 2, iter.max = 100)
+fcm$membership
+fcm$cluster
+
+centers <- sort(fcm$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+cate_df$FCM <- factor(fcm$cluster)
+
+b <- ggplot(cate_df, aes(x = soil_P, y = ry, color = FCM)) +
+  geom_point(size = 1) +
+  geom_vline(xintercept = boundaries, 
+             linetype = "dashed", color = "black")+
+  theme_bw() +
+  geom_text(data = data.frame(x = boundaries, y = max(cate_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            color = "black", vjust = -0.5, size = 3)+
+  labs(title = "Fuzzy C-means")+
+  xlab("Soil test value") + 
+  ylab("Relative yield (%)")
+
+
+
+
+### ARCHETYPE ANALYSIS
+set.seed(123)
+arc <- archetypes(cate_df[, c("soil_P", "ry")], k = 3)
+
+alpha <- coef(arc)
+
+cate_df$ArchGroup <- factor(max.col(alpha))
+
+arch_pts <- as.data.frame(parameters(arc)) 
+arch_pts$Archetype <- factor(1:nrow(arch_pts))
+
+centers_soil <- cate_df %>%
+  group_by(ArchGroup) %>%
+  summarise(soil_med = median(soil_P), .groups = "drop") %>%
+  arrange(soil_med)
+
+centers <- centers_soil$soil_med
+boundaries_arc <- (centers[-1] + centers[-length(centers)]) / 2
+
+c <- ggplot(cate_df, aes(x = soil_P, y = ry, color = ArchGroup)) +
+  geom_point(size = 1) +
+  geom_point(data = arch_pts,
+             aes(x = soil_P, y = ry),
+             shape = 8, size = 4, color = "black") +
+  geom_text(data = arch_pts,
+            aes(label = Archetype),
+            vjust = -1, color = "black") +
+  geom_vline(xintercept = boundaries_arc,
+             linetype = "dashed", color = "black") +
+  geom_text(data = data.frame(x = boundaries_arc,
+                              y = min(cate_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            vjust = -1, color = "black", size = 3) +
+  theme_bw() +
+  labs(title = "Archetype Analysis",
+       color = "Archetype")+
+  xlab("Soil test value") + 
+  ylab("Relative yield (%)")
+
+```
+
+
+```{r, echo = F}
+a
+b
+c
+```
+
+# Discussion
+
+The strong rate effect observed in the ANOVA highlights the agronomic importance of phosphorus availability for wheat production under the conditions of this study. The large F-statistic and near-zero p-value indicate that yield gains were not random but systematically driven by increasing fertilizer rate, even after accounting for underlying location differences. This suggests that producers operating in similar environments can expect meaningful improvements in yield with appropriate phosphorus management.
+
+Although the experimental design follows a randomized complete block structure within each site-year, the inclusion of the block-level random effect did not improve the mixed model's performance. The RCBD model failed the DHARMa Kolmogorov–Smirnov test, indicating non-uniformity of scaled residuals, while the simpler model with only a location random intercept satisfied all diagnostic checks. This result suggests that block-to-block variation within locations was minimal compared with the large environmental variability captured at the site-year level. In multi-environment agronomic trials, it is common for the block effect to be negligible, particularly when replications are conducted under relatively uniform field conditions. Given the better statistical properties of the simpler model and the absence of meaningful block variance, we retained the model with a single random intercept for location. This choice aligns the analytical strategy with both empirical evidence from residual diagnostics and established mixed-model practice in large multi-environment crop trials.
+
+Across all three unsupervised methods—K-means, Fuzzy C-means, and Archetype Analysis—consistent soil P thresholds emerged at approximately 14 ppm and 25 ppm. These results indicate a strong, stable partitioning of the fertility spectrum, even under methods that differ substantially in mathematical formulation and assumptions.
+
+While the Cate--Nelson CSTV (46.4 ppm) identifies the soil test value needed to reliably achieve 95\% RY, the clustering approaches reveal additional structure within the responsive region. The intervals
+\[
+\text{Low: } \text{STP} < 14 \text{ ppm}, \qquad
+\text{Medium: } 14 \le \text{STP} \le 25 \text{ ppm}, \qquad
+\text{Adequate: } \text{STP} > 25 \text{ ppm}
+\]
+represent biologically meaningful classes that reflect gradients of P limitation rather than strict binary response.
+
+K-means provides sharp, interpretable category boundaries suitable for decision support, while FCM highlights transitional cases where fertility status is ambiguous. Archetype analysis, though designed to capture extreme soil P--yield relationships, nevertheless produced nearly identical soil P thresholds upon projection, reinforcing that P availability is the primary driver of structure in this dataset.
+
+Across all three unsupervised learning approaches, the resulting soil P thresholds were remarkably stable, converging near 14 ppm and 25 ppm. These values align closely with the conceptual boundaries distinguishing low, medium, and adequate soil test categories in traditional calibration frameworks. Importantly, the thresholds emerged directly from the joint distribution of soil P and yield 
+response rather than from predetermined probability classes, suggesting that the data themselves contain strong internal structure. The agreement among methods despite differing mathematical criteria strengthens confidence in these thresholds as agronomically meaningful fertility classes.
+
+
+# Conclusion
+
+Phosphorus fertilization significantly increased wheat yield across Kansas sites, but the magnitude of response varied widely among locations. A linear mixed-effects model confirmed strong overall yield gains with increasing P rate, yet also revealed substantial environmental heterogeneity. Unsupervised learning applied to site-level response profiles consistently identified three agronomically meaningful groups—High, Moderate, and Low responders—regardless of clustering algorithm. These findings highlight the potential of data-driven classification tools to complement soil test guidelines and support more site-specific P fertilizer recommendations in wheat production.
