@@ -91,9 +91,9 @@ height.
 
 To identify the CSTV with this approach, we also implemented the classical Cate and Nelson (1965) method with the \texttt{soiltestcorr} package (Correndo et al, 2023). Relative yield was plotted against STP, and a 95\% RY cutoff was used to distinguish responsive from non-responsive observations. The algorithm searches for the CSTV that maximizes the number of correct classifications relative to this target. The resulting CSTV was marked by a vertical dashed line, and the 95\% RY threshold was shown as a horizontal reference.
 
-## Unsupervised methods for clustering
+## 2.4 Unsupervised methods for clustering
 
-\subsubsection{K-means Clustering}
+### 2.4.1 K-means Clustering
 
 To derive data-driven soil P classes, we fitted K-means clustering using soil P as the sole feature, ensuring that resulting partitions aligned with axis-parallel thresholds. The optimal number of clusters was evaluated via the within-cluster sum of squares (elbow method) and silhouette width, both of which indicated diminishing improvement beyond $k=3$. Thus, K-means was fitted with $k=3$ clusters and 25 random starts for stability.
 
@@ -103,25 +103,25 @@ Cluster boundaries were defined as midpoints between sorted centroids:
 \]
 where $c_i$ denotes the centroid of cluster $i$.
 
-\subsubsection{Fuzzy C-means Clustering}
+### 2.4.2 Fuzzy C-means Clustering}
 
 Fuzzy C-means (FCM) clustering was applied to the same soil P values using $k=3$ clusters and a fuzziness parameter $m=2$. Unlike K-means, FCM produces membership coefficients in $[0,1]$, allowing observations to partially belong to multiple fertility classes. Hard assignments for visualization were obtained by taking the cluster with maximum membership. As with K-means, boundaries were computed as midpoints between sorted fuzzy centroids.
 
-\subsubsection{Archetype Analysis}
+### 2.4.3 Archetype Analysis
 
 Archetype analysis was applied to a two-dimensional feature set consisting of soil P and RY. Archetypes are convex combinations of extreme points in the data cloud and capture distinct, biologically interpretable soil P--response profiles. A three-archetype model was selected to facilitate comparison with the $k=3$ clustering schemes.
 
 For each observation, archetype membership was determined using the maximal $\alpha$-coefficient. Because archetypes exist in two-dimensional space and do not yield axis-aligned thresholds, group medians of soil P were computed for each archetype and projected onto the soil P axis. Midpoints between these medians were used to approximate vertical boundaries.
 
 
-# Results
+# 3 Results
 
-## Mixed-effects models
+## 3.1 Mixed-effects models
 During model selection, we compared two mixed-effects models: one that included only a random intercept for location, and a second that incorporated the full RCBD structure with blocks nested within locations. The simpler model, produced clean residual diagnostics with no evidence of non-normality, dispersion issues, or heteroskedasticity. In contrast, the RCBD-consistent model showed a significant Kolmogorov–Smirnov test ($p =$ 0.029; DHARMa diagnostics), indicating deviations from the expected residual distribution (Figure 1). This suggests that the block-level random effect added noise without improving model fit. Because the block variance was negligible and the model with only a location random effect exhibited superior diagnostic performance, we selected the simpler model for all subsequent inference on phosphorus rate effects.
 
 The mixed-effects ANOVA indicated a highly significant effect of phosphorus application rate on wheat yield. The rate term explained a large proportion of the variation in yield (Sum Sq $= 61.9$ million; F = $88.49$, df $= 3, 311.0$; $p < 0.0001$), demonstrating that yield responses differed strongly across the four phosphorus levels. Because the model included a random effect for location, these results reflect treatment differences after accounting for site-to-site variability. Overall, phosphorus rate was the dominant driver of yield variation in this dataset.
 
-## Quadratic plateau and unsupervised methods
+## 3.2 Quadratic plateau and unsupervised methods
 
 The quadratic--plateau model identified a CSTV of $c = 27.3$ ppm  (Figure 2). The fitted quadratic 
 segment was
@@ -155,7 +155,7 @@ high yield. When the resulting archetype groups were projected onto the STP axis
 
 Although these cutpoints are slightly lower than those from K means and fuzzy C means, they fall in the same general region and support the presence of three fertility classes within the range defined by the QP CSTV.
 
-## Cate and Nelson and unsupervised methods
+## 3.3 Cate and Nelson and unsupervised methods
 
 The Cate and Nelson method identified a CSTV of 46.4 ppm (Figure 4), above which nearly all observations achieved at least 95\% RY. Below this threshold, RY showed substantial variability, which motivated the use of unsupervised learning to detect structure within the responsive range of STP. This relatively high CSTV suggests an overestimation of the soil P level required to secure adequate yield, because it classifies almost all data points as potentially responsive to P
 fertilization.
@@ -179,7 +179,7 @@ Finally, archetype analysis on the Cate and Nelson subset produced three extreme
 
 which are closely aligned with the boundaries obtained from K means and fuzzy C means, despite being derived from a two dimensional representation of the response surface.
 
-# Discussion
+# 4 Discussion
 
 The strong rate effect observed in the ANOVA highlights the agronomic importance of P availability for wheat production under the conditions of this study. The large F-statistic and near-zero p-value indicate that yield gains were not random but systematically driven by increasing fertilizer rate, even after accounting for underlying location differences. This suggests that producers operating in similar environments can expect meaningful improvements in yield with appropriate P management. 
 
@@ -194,10 +194,11 @@ These three zones can be interpreted in agronomic terms as strongly responsive, 
 Traditionally, STP tables use five categories such as very low, low, optimum, high, and very high. The limits of these categories are often based on expert judgement and broad probability targets rather than on an explicit statistical procedure. In contrast, the unsupervised analyses in this study used the observed distribution of STP and RY to determine both the number and the position of fertility classes. The scree pattern of the within cluster sum of squares and the average silhouette width supported a solution with three clusters, and all three algorithms produced very similar boundaries. As a result, the classes reported here arise from internal structure in the data rather than from arbitrarily defined classes and effectively compress the traditional five class system into three functionally distinct response regions.
 
 
-# Conclusion
+# 5 Conclusion
 
 Phosphorus fertilization significantly increased wheat yield across Kansas sites, but the magnitude of response varied widely among locations. A linear mixed-effects model confirmed strong overall yield gains with increasing P rate, yet also revealed substantial environmental heterogeneity. The combined use of classical calibration methods and unsupervised learning offers a complete description of soil test P response than either approach alone. Classical methods provide interpretable benchmarks that are straightforward to incorporate into recommendation systems, whereas unsupervised methods reveal internal structure within the responsive range and suggest natural groupings that can be related to probability and magnitude of response. 
-# Figures
+
+# 6 Figures
 
 ```{r, warning = F, results=F, message=FALSE, echo=FALSE}
 #### LINEAR MIXED MODEL
