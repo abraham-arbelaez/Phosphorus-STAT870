@@ -5,9 +5,7 @@ fontsize: 12pt
 geometry: margin=1in
 output:
   pdf_document:
-    includes:
-      in_header: header.tex
-    number_sections: true
+  number_sections: true
 abstract: |
     Phosphorus (P) fertilization decisions in wheat production often rely on soil test categories that may not fully capture variability in yield responses across sites. In this study, we analyze Kansas winter wheat P trials from 24 site--years to evaluate whether unsupervised learning methods can identify consistent patterns in yield response to P fertilization compared with classical calibration approaches. We first fit a linear mixed model to quantify overall yield trends across locations, then estimate critical soil test values (CSTV) using a quadratic plateau model and the Cate and Nelson procedure. We then apply k means clustering, fuzzy c means, and archetype analysis to soil test phosphorus (STP) and relative yield (RY) in the responsive range in order to derive data driven soil P fertility classes. Our goal is to compare how well these approaches produce agronomically interpretable groups and how the resulting boundaries relate to classical CSTV estimates.
   
@@ -103,7 +101,7 @@ Cluster boundaries were defined as midpoints between sorted centroids:
 \]
 where $c_i$ denotes the centroid of cluster $i$.
 
-### 2.4.2 Fuzzy C-means Clustering}
+### 2.4.2 Fuzzy C-means Clustering
 
 Fuzzy C-means (FCM) clustering was applied to the same soil P values using $k=3$ clusters and a fuzziness parameter $m=2$. Unlike K-means, FCM produces membership coefficients in $[0,1]$, allowing observations to partially belong to multiple fertility classes. Hard assignments for visualization were obtained by taking the cluster with maximum membership. As with K-means, boundaries were computed as midpoints between sorted fuzzy centroids.
 
@@ -198,7 +196,10 @@ Traditionally, STP tables use five categories such as very low, low, optimum, hi
 
 Phosphorus fertilization significantly increased wheat yield across Kansas sites, but the magnitude of response varied widely among locations. A linear mixed-effects model confirmed strong overall yield gains with increasing P rate, yet also revealed substantial environmental heterogeneity. The combined use of classical calibration methods and unsupervised learning offers a complete description of soil test P response than either approach alone. Classical methods provide interpretable benchmarks that are straightforward to incorporate into recommendation systems, whereas unsupervised methods reveal internal structure within the responsive range and suggest natural groupings that can be related to probability and magnitude of response. 
 
-# 6 Figures
+
+# 6 Figures and Tables
+
+Table 1.Analysis of variance for the linear mixed effects model evaluating the effect of phosphorus fertilizer rate on wheat grain yield.
 
 ```{r, warning = F, results=F, message=FALSE, echo=FALSE}
 #### LINEAR MIXED MODEL
@@ -260,7 +261,7 @@ anova_df %>%
 
 plot(simulateResiduals(model_1))
 ```
-Figure 1. DHARMa simulation based residual diagnostics for the linear mixed effects model of wheat grain yield. The QQ plot of scaled residuals (left) shows a slight deviation from the expected distribution according to the Kolmogorov Smirnov test (p = 0.0186), while dispersion and outlier tests are non significant. The boxplot of scaled residuals by predicted value class (right) indicates approximately uniform residuals and no evidence of heterogeneity of variance.
+Figure 1.DHARMa simulation based residual diagnostics for the linear mixed effects model of wheat grain yield. The QQ plot of scaled residuals (left) shows a slight deviation from the expected distribution according to the Kolmogorov Smirnov test (p = 0.0186), while dispersion and outlier tests are non significant. The boxplot of scaled residuals by predicted value class (right) indicates approximately uniform residuals and no evidence of heterogeneity of variance.
 
 
 
@@ -425,7 +426,7 @@ c <- ggplot(quad_df, aes(x = soil_P, y = ry, color = ArchGroup)) +
        color = "Archetype")
 
 ```
-Figure 2. Quadratic plateau model relating relative yield (%) to soil test phosphorus (mg/kg), showing an estimated critical STPvalue of 27.3 (mg/kg) and a yield plateau near 78 percent.
+Figure 2.Quadratic plateau model relating relative yield (%) to soil test phosphorus (mg/kg), showing an estimated critical STPvalue of 27.3 (mg/kg) and a yield plateau near 78 percent.
 
 ```{r, echo = F}
 ####### QUADRATIC PLATEAU
@@ -433,7 +434,7 @@ a
 b
 c
 ```
-Figure 3. Relative yield (RY, %) versus soil test phosphorus (soil_P, mg/kg) for Kansas wheat trials classified using three unsupervised methods: K means (top), fuzzy C means (middle), and archetype analysis (bottom). Points are colored according to the assigned cluster or archetype. Vertical dashed lines indicate the estimated soil P boundaries that separate three fertility classes, with numeric labels showing the corresponding cutpoints. In the archetype panel, black asterisks mark the locations of archetypes 1, 2, and 3 in the soil P–RY space.
+Figure 3.Relative yield (RY, %) versus soil test phosphorus (soil_P, mg/kg) for Kansas wheat trials classified using three unsupervised methods: K means (top), fuzzy C means (middle), and archetype analysis (bottom). Points are colored according to the assigned cluster or archetype. Vertical dashed lines indicate the estimated soil P boundaries that separate three fertility classes, with numeric labels showing the corresponding cutpoints. In the archetype panel, black asterisks mark the locations of archetypes 1, 2, and 3 in the soil P–RY space.
 
 ```{r, warning = F, results=F, message=FALSE, echo=FALSE}
 ##### CATE AND NELSON
@@ -537,7 +538,7 @@ c <- ggplot(cate_df, aes(x = soil_P, y = ry, color = ArchGroup)) +
   ylab("Relative yield (%)")
 
 ```
-Figure 4. Cate and Nelson plot of relative yield (%) versus soil test phosphorus (mg/kg), showing a 95% relative yield cutoff and an estimated critical soil test value of 46.4 ppm that separates responsive and non responsive observations.
+Figure 4.Cate and Nelson plot of relative yield (%) versus soil test phosphorus (mg/kg), showing a 95% relative yield cutoff and an estimated critical soil test value of 46.4 ppm that separates responsive and non responsive observations.
 
 ```{r, echo = F}
 ### CATE-NELSON
@@ -545,3 +546,4 @@ a
 b
 c
 ```
+Figure 5.Relative yield (RY, %) versus soil test phosphorus (soil_P, mg/kg) for Kansas wheat trials classified using three unsupervised methods: K means (top), fuzzy C means (middle), and archetype analysis (bottom). Points are colored according to the assigned cluster or archetype. Vertical dashed lines indicate the estimated soil P boundaries that separate three fertility classes, with numeric labels showing the corresponding cutpoints. In the archetype panel, black asterisks mark the locations of archetypes 1, 2, and 3 in the soil P–RY space.
