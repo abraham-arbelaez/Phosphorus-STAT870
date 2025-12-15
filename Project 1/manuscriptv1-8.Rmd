@@ -607,7 +607,7 @@ Figure 5.Relative yield (RY, %) versus soil test phosphorus (Soil test P (mg/kg)
 
 
 
-```{r}
+```{r, echo = F}
 df_clusters <- dfry %>%
   select(soil_P, ry) %>%
   drop_na()
@@ -638,7 +638,7 @@ p_kmeans <- ggplot(df_clusters, aes(x = soil_P, y = ry, color = Kmeans)) +
 ```
 
 
-```{r}
+```{r, echo = F}
 
 df_clusters <- dfry %>%
   select(soil_P, ry) %>%
@@ -676,5 +676,4 @@ p_fcm
 ```
 Figure 6.Relative yield (RY, %) versus soil test phosphorus (Soil test P (mg/kg)) for all the datapoint in Kansas winter wheat dataset for two of unsupervised machine learning methods: K means (top), and fuzzy C means (bottom). Vertical dashed lines indicate the estimated soil P boundaries that separate five fertility classes, with numeric labels showing the corresponding cutpoints.
 
-```
  
