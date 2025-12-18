@@ -1,0 +1,972 @@
+---
+title: "Magnitude of response for Soil Test Phosphorus"
+author: "Sofia Cominelli, Abraham Arbelaez"
+fontsize: 12pt
+geometry: margin=1in
+output:
+  pdf_document:
+  number_sections: true
+header-includes:
+  - \usepackage{setspace}
+  - \doublespacing
+abstract: |
+    Phosphorus fertilization strategies often rely on classifying fields based on soil test phosphorus (STP). Fields are commonly categorized as responsive or non responsive relative to a critical threshold, or assigned to discrete fertility classes that are arbitraty determined. In this project, we implemented unsupervised machine learning methods to generate data driven groups based on patterns in yield response using a Kansas winter wheat dataset from 24 site years. The objective was to evaluate whether unsupervised learning can identify consistent response patterns to P fertilization when compared with classical soil test calibration approaches. We first fit a linear mixed effects model to quantify overall yield differences across locations. We then estimated critical soil test values (CSTV) using a quadratic plateau model and the Cate Nelson procedure. Next, we applied k means clustering, fuzzy c means, and archetype analysis to STP and relative yield (RY) within the responsive range to derive data driven soil P fertility classes. Finally, we compared the agronomic interpretability of the resulting groups and evaluated how the inferred class boundaries relate to CSTV estimates from the classical methods
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# 1 Introduction
+
+Phosphorus (P) is an essential macronutrient for crop growth, and profitable crop production depends on maintaining adequate levels of available P ([McGrath et al., 2014](https://doi.org/10.1016/B978-0-444-52512-3.00249-7)). Therefore, effective planning of P fertilization has become increasingly important because grain and fertilizer prices are highly variable, and because public concern is growing regarding water quality and environmental impacts associated with P losses from agricultural fields.
+
+Soil testing is a widely used, though inherently imperfect, diagnostic tool for guiding phosphorus fertilizer recommendations. Soil sampling typically involves collecting multiple cores from the 0 to 15 cm depth and combining them into a single composite sample, often using about 10 to 12 cores per composite ([Lyons et al., 2022](https://doi.org/10.1080/00224561.2002.12457476)). Soil test methods rely on chemical extractants designed to estimate a fraction of total soil phosphorus that is assumed to be proportional to plant-available P. However, the extracted fraction represents only a subset of soil P pools and does not directly measure total P availability to crops. The remaining phosphorus may be bound to soil minerals, associated with organic matter, or otherwise unavailable to plants on agronomically relevant timescales. Moreover, the relationship between extracted P and crop availability can vary substantially across soil types and management histories due to factors such as clay content, mineralogy, pH, and buffering capacity, which influence how phosphorus interacts with the extraction solution and can reduce the consistency of soil test interpretations across environments ([Mallarino et al., 2002](https://doi.org/10.1080/00224561.2002.12457476)).
+
+Once soil test phosphorus (STP) is quantified, the next step is typically to relate STP values to observed crop yield responses to phosphorus fertilization. These correlation-based approaches use yield data from fertilizer response trials to estimate a critical soil test value (CSTV), defined as the STP concentration at which crop yield is no longer expected to increase appreciably with additional phosphorus inputs. Below the CSTV, yield responses to fertilization are more likely, whereas above the CSTV, additional P is generally considered agronomically unnecessary ([McGrath et al., 2014](https://doi.org/10.1016/B978-0-444-52512-3.00249-7)). The CSTV is commonly estimated using mathematical models fit to yield response data, including the Cate–Nelson split ([Cate & Nelson, 1971](https://doi.org/10.2136/sssaj1971.03615995003500040048x)), linear-plateau ([Anderson & Nelson, 1975](https://doi.org/10.2307/2529422)), quadratic plateau ([Bullock & Bullock, 1994](https://doi.org/10.2134/agronj1994.00021962008600010033x)), exponential models such as the Mitscherlich model ([Cerrato & Blackmer, 1990](https://doi.org/10.2134/agronj1990.00021962008200010030x)), and modified arcsine–log calibration curves ([Correndo et al., 2017](https://doi.org/10.1071/CP16444)), among others. In each case, yield serves as the primary response variable used to infer the soil phosphorus level at which fertilization ceases to be economically beneficial.
+
+An alternative to explicitly fitting yield response curves is to classify soils into discrete fertility groups based on STP, such as very low, low, optimum, high, and very high phosphorus, with each category associated with an empirical probability of yield response to fertilization. For example, previous research has shown that the probability of observing a yield response to phosphorus fertilization is approximately 80 percent for very low STP, 65 percent for low, 25 percent for optimum, 5 percent for high, and less than 1 percent for very high STP ([Mallarino, 2023](https://crops.extension.iastate.edu/cropnews/2023/02/newly-updated-phosphorus-and-potassium-guidelines)). These probability-based fertility classes are widely used in extension recommendations because they provide intuitive guidance for decision-making. However, the number of categories and the boundaries between them are often defined using predefined thresholds or expert judgment rather than an explicit, data-driven statistical framework, which may limit their ability to capture complex patterns in yield response across diverse environments.
+
+In this context, our objective is to compare unsupervised learning methods for detecting patterns in wheat yield responses to phosphorus fertilization across Kansas sites. Specifically, we compare k-means clustering ([Likas et al., 2003](https://doi.org/10.1016/S0031-3203(02)00060-2)), fuzzy c-means ([Bezdek et al., 1984](https://doi.org/10.1016/0098-3004(84)90020-7)), and archetype analysis ([Cutler & Breiman, 1994](https://doi.org/10.1080/00401706.1994.10485840)) to assess how consistently each method identifies meaningful groupings in soil test phosphorus and relative yield data. We then compare these data-driven groupings with CSTVs derived from commonly used calibration approaches. By linking the resulting clusters to expert agronomic interpretation, we aim to identify which methods provide the most informative and reliable guidance for phosphorus fertilizer management.
+
+
+
+# 2 Materials and Methods
+
+## 2.1 Dataset
+
+The dataset used in this study comes from Kansas winter wheat phosphorus fertilization trials conducted during the 2019 and 2020 growing seasons, resulting in a total of 24 site–years. Phosphorus was applied as monoammonium phosphate at four rates: 0, 45, 90, and 135 kg P ha$^{-1}$. Each fertilizer rate was applied to four replicated plots at each site–year, yielding a total of $24 \times 4 \times 4 = 384$ plot-level observations.
+
+All trials were established using a randomized complete block design (RCBD). Within each site–year, all phosphorus treatments were randomly assigned within each replication. Wheat was managed according to standard agronomic practices for the region, including consistent seeding rates, planting dates, and pest management. The same or locally recommended winter wheat variety was used within each site–year to minimize within-site genetic variability, though varieties may have differed among locations to reflect regional adaptation.
+
+The dataset includes grain yield and soil test phosphorus (STP) measurements for each replicated plot. Soil samples were collected from the 0–15 cm depth, with approximately 10 to 12 soil cores composited per plot. Soil test P was determined using the Mehlich-3 colorimetric extraction method.
+
+## 2.2 Mixed-effects model for yield response
+
+Grain yield response to phosphorus fertilization was evaluated using a linear mixed-effects model to quantify overall yield trends across environments. The treatment structure followed a one-way factorial design with phosphorus rate as the treatment factor, including levels of 0, 45, 90, and 135 kg P ha$^{-1}$. The experimental design used in this analysis exactly matches the field experimental design described in Section 2.1.
+
+Statistical inference on treatment differences was conducted using a mixed-model approach in which phosphorus rate was treated as a fixed effect. Site–year was included as a random effect to account for environmental variability among locations and years, and replications nested within site–year were also treated as random effects.
+
+The model was fitted using restricted maximum likelihood (REML) with the `lmer()` function from the `lme4` package in R. An analysis of variance (ANOVA) table for the fixed effect of phosphorus rate was obtained using Type III F-tests with the Kenward–Roger approximation for denominator degrees of freedom. Model assumptions were evaluated using simulation-based residual diagnostics from the `DHARMa` package. Estimated marginal means of grain yield for each phosphorus rate were obtained using the `emmeans` package and used to summarize the overall yield response to P across sites. All analyses were conducted in R (version 4.5.0), and the corresponding R code is provided in the Supplementary Material.
+
+The linear mixed-effects model was defined as:
+\[
+y_{ijk} = \mu + \tau_i + s_j + b_{k(j)} + \varepsilon_{ijk},
+\]
+where $y_{ijk}$ denotes the grain yield observed at phosphorus rate $i$ in block $k$ of site–year $j$, $\mu$ is the overall mean, $\tau_i$ is the fixed effect of the $i$th phosphorus rate ($i = 1,\dots,4$), $s_j \sim \text{Normal}(0,\sigma_s^2)$ is the random effect of site–year $j$, $b_{k(j)} \sim \text{Normal}(0,\sigma_b^2)$ is the random effect of block $k$ nested within site–year $j$, and $\varepsilon_{ijk} \sim \text{Normal}(0,\sigma^2)$ is the residual error. All random effects were assumed to be independent.
+
+## 2.3 Critical soil test phosphorus–based models
+
+Because soil fertility recommendations are commonly based on a critical soil test value (CSTV), we fitted two standard CSTV methods to identify the STP level separating responsive from non-responsive conditions. Each site–year contained four replications, and STP was measured at the plot level. For each replication, approximately 10 to 12 soil cores were collected, composited, and analyzed in the laboratory, resulting in a single STP value per plot. Therefore, each plot-level observation (replication within site–year) served as an individual data point in the CSTV analyses.
+
+In both CSTV models, the response variable was relative yield (RY). For each site–year, relative yield was defined as
+\[
+\text{RY} = \frac{Y_0}{\max(Y_0, \dots, Y_R)},
+\]
+where $Y_0$ is the estimated mean grain yield of the control treatment (0 kg P ha$^{-1}$) and $\max(Y_0, \dots, Y_R)$ is the maximum estimated mean yield observed across all phosphorus rates at that site–year.
+
+The quadratic plateau (QP) CSTV and the Cate–Nelson CSTV provide complementary benchmarks: a parametric threshold derived from a response curve and a nonparametric threshold based on classification accuracy relative to a target RY. These CSTVs were used to define the responsive STP range for subsequent clustering analyses.
+
+### 2.3.1 Quadratic Plateau
+
+A quadratic–plateau function was fitted to estimate the CSTV, as this form allows for diminishing yield response at higher STP levels and is commonly considered biologically reasonable and agronomically useful. The model was defined as:
+\[
+\text{RY}(x) =
+\begin{cases}
+\beta_0 + \beta_1 x + \beta_2 x^2, & x < c, \\[6pt]
+\beta_0 + \beta_1 c + \beta_2 c^2, & x \ge c,
+\end{cases}
+\]
+where $x$ denotes STP and $c$ is the estimated CSTV marking the transition between the quadratic response region and the yield plateau. The model was fitted using the `quadratic_plateau()` function from the `soiltestcorr` package ([Correndo et al., 2023](https://doi.org/10.1016/j.softx.2022.101275)).
+
+### 2.3.2 Cate and Nelson
+
+The Cate–Nelson method is a graphical classification approach that identifies the CSTV by maximizing the separation between responsive and non-responsive observations. The method begins by specifying a fixed RY target, which divides observations into those below and at or above the target. The CSTV is then chosen as the STP value that maximizes the number of observations correctly classified into the four resulting quadrants.
+
+The Cate–Nelson method was implemented using the `cate_nelson_1965()` function from the `soiltestcorr` package ([Correndo et al., 2023](https://doi.org/10.1016/j.softx.2022.101275)). A 95% RY cutoff was used to define responsiveness. The resulting CSTV was visualized as a vertical dashed line, with the RY threshold shown as a horizontal reference.
+
+## 2.4 Unsupervised machine learning methods for clustering
+
+Clustering is an unsupervised machine learning approach used to identify patterns in data by grouping observations with similar characteristics. In this study, we applied three clustering methods—k-means, fuzzy c-means, and archetype analysis—to derive data-driven groupings in soil test phosphorus and relative yield.
+
+Clustering analyses were restricted to observations with STP values below the CSTVs estimated using the quadratic plateau and Cate–Nelson methods. Observations above the CSTV were classified as non-responsive and excluded from clustering. All clustering analyses were conducted in R using the `cluster`, `e1071`, and `archetypes` packages.
+
+### 2.4.1 K-means Clustering
+
+K-means clustering was applied using soil test phosphorus as the sole clustering variable so that resulting group boundaries corresponded to thresholds along the STP gradient. The algorithm partitions observations by minimizing within-cluster sum of squares around cluster centroids. The optimal number of clusters was evaluated using the elbow method and average silhouette width, both of which showed limited improvement beyond $k = 3$. Consequently, k-means clustering was performed with $k = 3$ clusters and 25 random initializations to improve solution stability.
+
+Cluster boundaries were defined as midpoints between adjacent sorted centroids:
+\[
+\text{Boundary}_i = \frac{c_i + c_{i+1}}{2},
+\]
+where $c_i$ denotes the centroid of cluster $i$.
+
+### 2.4.2 Fuzzy C-means Clustering
+
+Fuzzy c-means (FCM) clustering was applied to the same soil P values using $k = 3$ clusters and a fuzziness parameter of $m = 2$. Unlike k-means, FCM assigns each observation a membership coefficient between 0 and 1 for each cluster, allowing partial membership across fertility classes. For visualization and comparison purposes, hard cluster assignments were obtained by selecting the cluster with the highest membership coefficient. Boundaries were computed as midpoints between sorted fuzzy centroids.
+
+### 2.4.3 Archetype Analysis
+
+Archetype analysis was applied to a two-dimensional feature space consisting of soil test phosphorus and relative yield. Archetypes represent convex combinations of extreme observations in the data cloud and correspond to distinct soil P–response profiles. A three-archetype solution was selected to facilitate comparison with the $k = 3$ clustering approaches.
+
+Archetype membership for each observation was determined using the maximum $\alpha$-coefficient. Because archetypes are defined in two-dimensional space and do not yield axis-aligned thresholds, median STP values were computed for each archetype and projected onto the STP axis. Midpoints between these medians were used to approximate vertical class boundaries.
+
+
+
+# 3 Results
+
+## 3.1 Mixed-effects models
+During model selection, we compared two mixed-effects models: one that included only a random intercept for location, and a second that incorporated the full RCBD structure with blocks nested within locations. The simpler model, produced a better residual diagnostics with no evidence of non-normality, dispersion issues, or heteroskedasticity (Figure 1). In contrast, the RCBD-consistent model showed a significant Kolmogorov–Smirnov test ($p =$ 0.029; DHARMa diagnostics), indicating deviations from the expected residual distribution. This suggests that the block-level random effect added noise without improving model fit. Because the block variance was negligible and the model with only a location random effect exhibited superior diagnostic performance, we selected the simpler model for all subsequent inference on phosphorus rate effects.
+
+The mixed-effects ANOVA indicated a significant effect of P application rate on wheat yield. The rate term explained a large proportion of the variation in yield (Sum Sq $= 61.9$ million; F = $88.49$, df $= 3, 311.0$; $p < 0.0001$), demonstrating that yield responses differed strongly across the four P rates Because the model included a random effect for location, these results reflect treatment differences after accounting for site-to-site variability. Overall, P rate was the dominant driver of yield variation in this dataset.
+
+## 3.2 Quadratic plateau and unsupervised machine learning methods
+
+The quadratic--plateau model identified a CSTV of $c = 27.3$ ppm  (Figure 2). The fitted quadratic 
+segment was
+
+\[
+\widehat{\text{RY}} = 21.5 + 4.13x - 0.08x^2 
+\qquad \text{for } x < 27.3,
+\]
+
+with a pseudo-$R^2 = 0.47$ and AICc = 679.99. The estimated yield plateau was approximately 78\% RY according to the soiltestcorr package. 
+
+Within the STP range below the QP CSTV, K means clustering produced three classes with boundaries at approximately 
+\[
+11.5 \text{ ppm} \quad \text{and} \quad 18.6 \text{ ppm}.
+\]
+
+The lowest class was associated with a broad range of RY values (approximately 20 to 60\%), the intermediate class included RY from about 40 to 100\% with many observations around 70 to 80\%, and the highest class contained most observations above 80\% RY. These three classes correspond to intuitive low, medium, and adequate soil P categories (Figure 3 top).
+Fuzzy C means clustering applied to the same data identified almost identical centroids and boundaries, with cutpoints at
+\[
+11.4 \text{ ppm} \quad \text{and} \quad 18.5 \text{ ppm}.
+\]
+Membership coefficients indicated smooth transitions between low and medium soil P, which suggests that several plots have intermediate fertility characteristics rather than belonging to a single class with complete certainty. However, hard assignments
+based on the highest membership produced groupings that were very similar to the K means classes (Figure 3 middle).
+
+
+Archetype analysis on the QP subset yielded three extreme soil P RY profiles (Figure 3 bottom): one representing low soil P with low yield, one representing intermediate soil P with moderate to high yield, and one representing high soil P with consistently
+high yield. When the resulting archetype groups were projected onto the STP axis, they produced boundary estimates of
+\[
+12 \text{ ppm} \quad \text{and} \quad 16.5 \text{ ppm},
+\]
+
+Although these cutpoints are slightly lower than those from K means and fuzzy C means, they fall in the same general region and support the presence of three fertility classes within the range defined by the QP CSTV. The archtype analysis groups were different and this because we also consider the RY as another variable.
+
+## 3.3 Cate and Nelson and unsupervised machine learning methods
+
+The Cate and Nelson method identified a CSTV of 46.4 ppm (Figure 4), above which nearly all observations achieved at least 95\% RY. Below this threshold, RY showed substantial variability, which motivated the use of unsupervised learning to detect structure within the responsive range of STP. This relatively high CSTV suggests an overestimation of the soil P level required to secure adequate yield, because it classifies almost all data points as potentially responsive to P
+fertilization.
+
+Using K means clustering on STP values below the Cate and Nelson CSTV, we partitioned the distribution into three classes with boundaries at approximately 
+\[
+13.7 \text{ ppm} \quad \text{and} \quad 25.2 \text{ ppm}.
+\]
+The lowest class was associated with a wide range of RY values (approximately 20--60\%), the intermediate class included RYs from about 40--100\% with many observations around 70--80\%, and the highest class contained most observations above 80\% RY. These clusters correspond to intuitive ``low,'' ``medium,'' and ``adequate'' soil P categories (Figure 5 top).
+
+Fuzzy C means clustering identified nearly identical centroids and boundaries, with limits at
+\[
+13.7 \text{ ppm} \quad \text{and} \quad 25.3 \text{ ppm}.
+\]
+Membership coefficients resulted in smooth transitions between low and medium P, indicating that several plots possess intermediate fertility characteristics rather than discrete class membership. Nevertheless, hard cluster assignments produced groupings closely aligned with K-means (Figure 5 middle).
+
+Finally, archetype analysis on the Cate and Nelson subset produced three extreme profiles that can be interpreted as low soil P with low yield (Figure 5 bottom), intermediate soil P with moderate to high yield, and high soil P with consistently high yield. Projection of these archetype groups onto the STP axis resulted in boundary estimates of
+\[
+14.6 \text{ ppm} \quad \text{and} \quad 25.3 \text{ ppm},
+\]
+
+which are closely aligned with the boundaries obtained from K means and fuzzy C means, despite being derived from a two dimensional representation of the response surface.
+
+# 4 Discussion
+
+From the mixed model analysis, we found that P availability affects wheat yield, as yields under the unfertilized control differed from yields under fertilized treatments. This result suggests that producers in similar environments can expect meaningful yield gains with appropriate P management. Although the experimental design was a randomized complete block design within each site year, including a block level random effect did not improve model performance. The RCBD mixed model failed the DHARMa Kolmogorov Smirnov test, indicating non uniformity of the scaled residuals, whereas the simpler model with only a site year random intercept satisfied the diagnostic checks. This outcome suggests that block to block variability within site years was small relative to the much larger environmental variability among site years. Given the stronger diagnostic performance of the simpler model and the lack of evidence for meaningful block variance, we selected the model with a single random effect for site year. This choice aligns the analysis with both the residual diagnostics and common mixed model practice for multi environment crop trials.
+
+The two classical CSTV methods provided very different threshold for classifying site responsiveness. The Cate and Nelson resulted in CSTV of 46.4 (mg/kg) with a 95 percent RY target, and the quadratic plateau model estimated a lower CSTV of about 27 (mg/kg)  near 78 percent RY. From a practical perspective, the Cate Nelson CSTV appears conservative, as lowering the relative yield target would result in a lower critical value. In contrast, the quadratic plateau CSTV reflects a more moderate yield target and may be closer to an economic optimum under certain price and cost scenarios.
+
+Within the soil test P range below the classical CSTV values, the unsupervised learning methods revealed clear internal structure that is not captured by a single threshold. When applied to the subset defined by the quadratic plateau CSTV, K means, fuzzy C means, and archetype analysis all identified three soil P classes with boundaries in the vicinity of 12 to 19 ppm. When applied to the subset defined by the Cate and Nelson CSTV, the same three methods produced boundaries close to 14 and 25 ppm. Despite differences in algorithms, input spaces, and exact numerical values, all unsupervised approaches repeatedly separated the data into three fertility zones: a low soil P zone with large yield gaps, an intermediate zone with variable responses, and a higher soil P zone where RY was generally high and additional P responses were rare.
+
+These three zones can be interpreted in agronomic terms as strongly responsive, responsive, and optimum range with few or moderate response. In the low soil P class, RY of the control treatment was often 20 to 60 percent of the maximum yield at that site, which indicates large yield losses when P is not applied. In the intermediate class, RY ranged from about 40 to 100 percent, with a concentration of observations around 70 to 80 percent. This pattern suggests that yield response to P is possible but not guaranteed, and that additional information on soil, weather, or management may be needed to improve recommendations. In the highest soil P class, most observations were above 80 percent RY and clear responses to P were uncommon, which indicates that further P additions are unlikely to be profitable in this range.
+
+Traditionally, STP tables use five categories such as very low, low, optimum, high, and very high. The limits of these categories are often based on expert judgement and broad probability targets rather than on an explicit statistical procedure. So as final step we decided to include categories for for the whole dataset, ignoring the threshold to determine which site where considered for the groups and apply the unsupervised methods for all the datapoint setting 5 categories and the yield in very similar results reported by Mallarino (2023) (Figure 6).
+
+A key strength of this study is the use of a data driven framework in which soil P categories were not predefined, but instead emerged from the observed patterns in soil test P and relative yield. The fact that similar groupings were obtained across distinct algorithms increases confidence that the identified structure is not an artifact of a single method. In addition, the clustering approaches revealed patterns within the responsive range that are not captured by classical CSTV methods, which typically summarize responsiveness using a single threshold.
+
+The weakness of this study is the unsupervised machine learning methods are descriptive because they identify structure in the existing data but does not directly provide predictive probabilities for new sites. The resulting clusters can also depend on the particular dataset available, including its range of soil test values, environments, and sample size. Finally, clustering can help define fertility classes but does not by itself indicate the economically optimal phosphorus rate to apply.
+
+# 5 Conclusion
+
+Together, the classical calibration methods and the unsupervised learning approaches provide a more complete description of soil test P response than either approach alone. Classical methods yield interpretable critical soil test values that can be readily incorporated into recommendation frameworks, whereas unsupervised methods uncover additional structure within the responsive range and suggest data driven fertility classes that can be linked to both the probability and magnitude of yield response. 
+
+# References
+
+Anderson, R. L., & Nelson, L. A. (1975).  A family of models involving intersecting straight lines and concomitant analysis of variance. *Biometrics, 31*(2), 303–318. https://doi.org/10.2307/2529422
+
+Bezdek, J. C., Ehrlich, R., & Full, W. (1984). FCM: The fuzzy c-means clustering algorithm.  
+*Computers & Geosciences, 10*(2–3), 191–203. https://doi.org/10.1016/0098-3004(84)90020-7
+
+Bullock, D. G., & Bullock, D. S. (1994). Quadratic and quadratic-plus-plateau models for predicting optimal nitrogen rate of corn. *Agronomy Journal, 86*(1), 191–195. https://doi.org/10.2134/agronj1994.00021962008600010033x
+
+Cate, R. B., & Nelson, L. A. (1971). A simple statistical procedure for partitioning soil test correlation data into two classes. *Soil Science Society of America Journal, 35*(4), 658–660. https://doi.org/10.2136/sssaj1971.03615995003500040048x
+
+Cerrato, M. E., & Blackmer, A. M. (1990). Comparison of models for describing corn yield response to nitrogen fertilizer. *Agronomy Journal, 82*(1), 138–143. https://doi.org/10.2134/agronj1990.00021962008200010030x
+
+Correndo, A. A., Pearce, A., Bolster, C. H., Spargo, J. T., Osmond, D., & Ciampitti, I. A. (2023). The soiltestcorr R package: an accessible framework for reproducible correlation analysis of crop yield and soil test data. *SoftwareX, 21*, 101275. https://doi.org/10.1016/j.softx.2022.101275
+
+Correndo, A. A., García, F. O., & Vyn, T. J. (2017). A modified arcsine–log calibration curve for soybean yield response to phosphorus fertilization. *Crop & Pasture Science, 68*(4), 350–360. https://doi.org/10.1071/CP16444
+
+Cutler, A., & Breiman, L. (1994). Archetypal analysis. *Technometrics, 36*(4), 338–347. https://doi.org/10.1080/00401706.1994.10485840
+
+Likas, A., Vlassis, N., & Verbeek, J. (2003). The global k-means clustering algorithm. *Pattern Recognition, 36*(2), 451–461. https://doi.org/10.1016/S0031-3203(02)00060-2
+
+Lyons, D. J., McBeath, T. M., Simpson, R. J., & McLaughlin, M. J. (2022). Understanding soil sampling depth and phosphorus availability. *Journal of the Science of Food and Agriculture, 102*(4), 1345–1353.
+
+Mallarino, A. P. (2023). Newly updated phosphorus and potassium guidelines. Iowa State University Extension Crop News. https://crops.extension.iastate.edu/cropnews/2023/02/newly-updated-phosphorus-and-potassium-guidelines
+
+Mallarino, A. P., Sawyer, J. E., & Barnhart, S. K. (2002). A general framework for phosphorus and potassium soil test interpretation. *Better Crops, 86*(3), 18–22.
+
+McGrath, J. M., Penn, C. J., & Long, M. S. (2014). Phosphorus: Sources, fate, and transport. In *Encyclopedia of Agriculture and Food Systems* (Vol. 4, pp. 222–239). Elsevier. https://doi.org/10.1016/B978-0-444-52512-3.00249-7
+
+
+
+# 7 Figures and Tables
+
+Table 1.Analysis of variance for the linear mixed effects model evaluating the effect of phosphorus fertilizer rate on wheat grain yield.
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+#### LINEAR MIXED MODEL
+
+# Load libraries
+library(tidyverse)  # Data wrangling
+library(readxl)     # Read excel
+library(dplyr)      # Data manipulation    
+library(janitor)    # Colname space
+library(ggrepel)    # Text labeling in plots
+library(lme4)       # Mixed-models package
+library(DHARMa)     # Residual diagnostics for mixed models
+library(emmeans)    # Marginal means and contrast
+library(lmerTest)   # p-values and tests for fixed effects in lmer models
+library(purrr)      # Publication ready plot format
+library(knitr)      # Table generator with publication format
+library(kableExtra) # enhanced table formatting for LaTeX and HTML
+
+# Read file
+df <- read_excel("P_kansas_wheat.xlsx") %>%
+  clean_names()
+
+# Data wrangling
+df_wheat <- df %>%
+  select(year, loc_n, rep, plot, trt, source, p_kg, p_m_ppm, hg_kg_ha) %>%
+  filter(source %in% c("MAP", "Check")) %>%
+  rename(location = loc_n,
+         rate = p_kg,
+         soil_P = p_m_ppm,
+         yield = hg_kg_ha) %>%
+  filter(!is.na(yield))
+
+df_wheat <- df_wheat %>%
+  mutate(location = factor(location),
+    rep= factor(rep),
+    rate= factor(rate),
+    rate_num = as.numeric(as.character(rate)))
+
+# Model with only site-year as random
+model_1 <- lmer(yield ~ rate + (1 | location), data = df_wheat)
+model_1
+
+# Marginal means
+em <- emmeans(model_1, ~ rate)
+
+
+# ANOVA
+anova_table <- anova(model_1, type = 3)
+
+anova_df <- as.data.frame(anova_table)
+anova_df <- tibble::rownames_to_column(anova_df, var = "Source")
+```
+
+
+```{r, echo = F}
+### OUTPUTS
+
+# Anova table
+anova_df %>%
+  kable(
+    format   = "latex",
+    booktabs = TRUE,
+    caption  = "Analysis of variance for the linear mixed model",
+    label    = "anova_lmm"
+  ) %>%
+  kable_styling(latex_options = "hold_position")
+
+
+# Check model assumptions
+plot(simulateResiduals(model_1))
+```
+Figure 1.DHARMa simulation based residual diagnostics for the linear mixed effects model of wheat grain yield. The QQ plot of scaled residuals (left) shows a slight deviation from the expected distribution according to the Kolmogorov Smirnov test (p = 0.0186), while dispersion and outlier tests are non significant. The boxplot of scaled residuals by predicted value class (right) indicates approximately uniform residuals and no evidence of heterogeneity of variance.
+
+
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+#### MACHINE LEARNING
+
+library(cluster)      # Clustering methods
+library(e1071)        # Fuzzy c-means
+library(archetypes)   # Archtype analysis
+library(factoextra)   # Visualization of clustering results
+library(ggplot2)      # Data visualization
+library(gridExtra)    # Arrangement of multiple plots
+library(soiltestcorr) # Soil test calibration methods (quadratic plateau, Cate–Nelson)
+
+# Data wrangling
+df_wheat <- df %>%
+  select(year, loc_n, rep, plot, trt, source, p_kg, p_m_ppm, hg_kg_ha) %>%
+  filter(source %in% c("MAP", "Check")) %>%
+  rename(location = loc_n,
+         rate = p_kg,
+         soil_P = p_m_ppm,
+         yield = hg_kg_ha) %>%
+  filter(!is.na(yield))
+
+
+df_wheat <- df_wheat %>%
+  mutate(location = factor(location),
+    rep= factor(rep),
+    rate= factor(rate),
+    rate_num = as.numeric(as.character(rate)))
+
+
+bestdf <- 
+  df_wheat %>%
+  group_by(soil_P, rep) %>%
+  mutate(yield_control = ifelse(rate_num == 0, yield, 0)) %>%
+  mutate(yield_control = ifelse(yield_control == 0, max(yield_control), max(yield_control))) %>%
+  mutate(yield_max = max(yield)) %>%
+  mutate(yield_135 = ifelse(rate_num == 135, yield, 0)) %>%
+  mutate(yield_135 = ifelse(yield_135 == 0, max(yield_135), max(yield_135)))
+
+
+### RELATIVE YIELD for R_0/R_135
+rydf <- bestdf[,c("year", "location", "rep", "soil_P", "rate_num", "yield_control", "yield_135")]
+
+rydf <- rydf %>%
+  group_by(location,rep, soil_P) %>%
+  summarise(yield_control = mean(yield_control),
+            yield_135 = mean(yield_135),.groups = "drop")
+
+rydf$ry <- (rydf$yield_control/rydf$yield_135)*100
+
+
+### RELATIVE YIELD for R_0/R_max
+dfry <- bestdf[,c("year", "location", "rep", "soil_P", "rate_num", "yield_control", "yield_max")]
+
+dfry <- dfry %>%
+  group_by(location,rep, soil_P) %>%
+  summarise(yield_control = mean(yield_control),
+            yield_max = mean(yield_max),.groups = "drop")
+
+dfry$ry <- (dfry$yield_control/dfry$yield_max)*100
+
+
+df_clusters <- dfry %>% select(ry, soil_P)
+
+df_scaled <- scale(df_clusters)
+
+```
+
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+###### QUADRATIC PLATEAU
+qp_fit <- quadratic_plateau(df_clusters, stv = soil_P, ry = ry, target = 95, plot = T)
+
+
+quad_df <- df_clusters %>%
+  filter(soil_P < 27.3)
+
+quad_scaled <- scale(quad_df)
+
+qp_fit
+
+
+### KMEANS
+set.seed(8008135)
+km <- kmeans(quad_df$soil_P, centers = 3, nstart = 25)
+
+quad_df$Kmeans <- factor(km$cluster)
+
+centers <- sort(km$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+a <- ggplot(quad_df, aes(x = soil_P, y = ry, color = Kmeans)) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = boundaries, 
+             linetype = "dashed", color = "black") +
+  theme_bw() +
+  geom_text(data = data.frame(x = boundaries, y = max(quad_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            color = "black", vjust = -0.5, size = 3) +
+  labs(
+    title = "K-means",
+    x = "Soil test P (mg/kg)",      
+    y = "Relative Yield (%)"      
+  )+
+  theme(legend.position = "bottom")
+
+
+
+### FUZZY C-MEANS
+set.seed(8008135)
+fcm <- cmeans(quad_df$soil_P, centers = 3, m = 2, iter.max = 100)
+fcm$membership
+fcm$cluster
+
+centers <- sort(fcm$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+quad_df$FCM <- factor(fcm$cluster)
+
+b <- ggplot(quad_df, aes(x = soil_P, y = ry, color = FCM)) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = boundaries, 
+             linetype = "dashed", color = "black")+
+  theme_bw() +
+  geom_text(data = data.frame(x = boundaries, y = max(quad_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            color = "black", vjust = -0.5, size = 3)+
+    labs(title = "Fuzzy C-means",
+    x = "Soil test P (mg/kg)",      
+    y = "Relative Yield (%)") +
+  theme(legend.position = "bottom")
+
+
+### ARCHETYPE ANALYSIS
+set.seed(8008135)
+arc <- archetypes(quad_df[, c("soil_P", "ry")], k = 3)
+
+alpha <- coef(arc)
+
+quad_df$ArchGroup <- factor(max.col(alpha))
+
+arch_pts <- as.data.frame(parameters(arc)) 
+arch_pts$Archetype <- factor(1:nrow(arch_pts))
+
+centers_soil <- quad_df %>%
+  group_by(ArchGroup) %>%
+  summarise(soil_med = median(soil_P), .groups = "drop") %>%
+  arrange(soil_med)
+
+centers <- centers_soil$soil_med
+boundaries_arc <- (centers[-1] + centers[-length(centers)]) / 2
+
+c <- ggplot(quad_df, aes(x = soil_P, y = ry, color = ArchGroup)) +
+  geom_point(size = 2) +
+  geom_point(data = arch_pts,
+             aes(x = soil_P, y = ry),
+             shape = 8, size = 4, color = "black") +
+  geom_text(data = arch_pts,
+            aes(label = Archetype),
+            vjust = -1, color = "black") +
+  geom_vline(xintercept = boundaries_arc,
+             linetype = "dashed", color = "black") +
+  geom_text(data = data.frame(x = boundaries_arc,
+                              y = min(quad_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            vjust = -1, color = "black", size = 3) +
+  theme_bw() +
+  labs(title = "Archetype Analysis",
+       color = "Archetype",
+       x = "Soil test P (mg/kg)",
+       y = "Relative Yield (%)")+
+  theme(legend.position = "bottom")
+
+```
+Figure 2.Quadratic plateau model relating relative yield (%) to soil test phosphorus (mg/kg), showing an estimated critical STPvalue of 27.3 (mg/kg) and a yield plateau near 78 percent.
+
+```{r, echo = F}
+####### QUADRATIC PLATEAU
+a
+b
+c
+```
+Figure 3.Relative yield (RY, %) versus soil test phosphorus (Soil test P (mg/kg)) for Kansas wheat trials classified using three unsupervised machine learning methods: K means (top), fuzzy C means (middle), and archetype analysis (bottom). Points are colored according to the assigned cluster or archetype. Vertical dashed lines indicate the estimated soil P boundaries that separate three fertility classes, with numeric labels showing the corresponding cutpoints. In the archetype panel, black asterisks mark the locations of archetypes 1, 2, and 3 in the soil P–RY space.
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+##### CATE AND NELSON
+cate_nelson_1965(df_clusters, stv = soil_P, ry = ry, target = 95, plot = T)
+
+cate_df <- df_clusters %>%
+  filter(soil_P < 46.4)
+
+cate_scaled <- scale(cate_df)
+
+### KMEANS
+#fviz_nbclust(cate_scaled, kmeans, method = "wss")
+
+#fviz_nbclust(cate_scaled, kmeans, method = "silhouette")
+
+set.seed(123)
+km <- kmeans(cate_df$soil_P, centers = 3, nstart = 25)
+
+cate_df$Kmeans <- factor(km$cluster)
+
+centers <- sort(km$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+a <- ggplot(cate_df, aes(x = soil_P, y = ry, color = Kmeans)) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = boundaries, 
+             linetype = "dashed", color = "black") +
+  theme_bw() +
+  geom_text(data = data.frame(x = boundaries, y = max(cate_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            color = "black", vjust = -0.5, size = 3)+
+  labs(
+    title = "K-means",
+    x = "Soil test P (mg/kg)",      
+    y = "Relative Yield (%)"      
+  )+
+  theme(legend.position = "bottom")
+
+
+
+### FUZZY C-MEANS
+set.seed(123)
+fcm <- cmeans(cate_df$soil_P, centers = 3, m = 2, iter.max = 100)
+fcm$membership
+fcm$cluster
+
+centers <- sort(fcm$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+cate_df$FCM <- factor(fcm$cluster)
+
+b <- ggplot(cate_df, aes(x = soil_P, y = ry, color = FCM)) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = boundaries, 
+             linetype = "dashed", color = "black")+
+  theme_bw() +
+  geom_text(data = data.frame(x = boundaries, y = max(cate_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            color = "black", vjust = -0.5, size = 3)+
+  labs(title = "Fuzzy C-means")+
+  xlab("Soil test P (mg/kg)") + 
+  ylab("Relative yield (%)")+
+    labs(title = "Fuzzy C-means",
+    x = "Soil test P (mg/kg)",      
+    y = "Relative Yield (%)") +
+  theme(legend.position = "bottom")
+
+
+### ARCHETYPE ANALYSIS
+set.seed(123)
+arc <- archetypes(cate_df[, c("soil_P", "ry")], k = 3)
+
+alpha <- coef(arc)
+
+cate_df$ArchGroup <- factor(max.col(alpha))
+
+arch_pts <- as.data.frame(parameters(arc)) 
+arch_pts$Archetype <- factor(1:nrow(arch_pts))
+
+centers_soil <- cate_df %>%
+  group_by(ArchGroup) %>%
+  summarise(soil_med = median(soil_P), .groups = "drop") %>%
+  arrange(soil_med)
+
+centers <- centers_soil$soil_med
+boundaries_arc <- (centers[-1] + centers[-length(centers)]) / 2
+
+c <- ggplot(cate_df, aes(x = soil_P, y = ry, color = ArchGroup)) +
+  geom_point(size = 2) +
+  geom_point(data = arch_pts,
+             aes(x = soil_P, y = ry),
+             shape = 8, size = 4, color = "black") +
+  geom_text(data = arch_pts,
+            aes(label = Archetype),
+            vjust = -1, color = "black") +
+  geom_vline(xintercept = boundaries_arc,
+             linetype = "dashed", color = "black") +
+  geom_text(data = data.frame(x = boundaries_arc,
+                              y = min(cate_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            vjust = -1, color = "black", size = 3) +
+  theme_bw() +
+  labs(title = "Archetype Analysis",
+       color = "Archetype")+
+  xlab("Soil test P (mg/kg)") + 
+  ylab("Relative yield (%)")+
+  theme(legend.position = "bottom")
+
+```
+Figure 4.Cate and Nelson plot of relative yield (%) versus soil test phosphorus (mg/kg), showing a 95% relative yield cutoff and an estimated critical soil test value of 46.4 ppm that separates responsive and non responsive observations.
+
+```{r, echo = F}
+### CATE-NELSON
+a
+b
+c
+```
+Figure 5.Relative yield (RY, %) versus soil test phosphorus (Soil test P (mg/kg)) for Kansas wheat trials classified using three unsupervised machine learning methods: K means (top), fuzzy C means (middle), and archetype analysis (bottom). Points are colored according to the assigned cluster or archetype. Vertical dashed lines indicate the estimated soil P boundaries that separate three fertility classes, with numeric labels showing the corresponding cutpoints. In the archetype panel, black asterisks mark the locations of archetypes 1, 2, and 3 in the soil P–RY space.
+
+
+
+
+
+```{r, echo = F}
+df_clusters <- dfry %>%
+  select(soil_P, ry) %>%
+  drop_na()
+
+set.seed(123)
+km <- kmeans(df_clusters$soil_P, centers = 5, nstart = 25)
+
+## Add cluster to data
+df_clusters$Kmeans <- factor(km$cluster)
+
+## Vertical boundaries between clusters
+centers    <- sort(km$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+## Plot
+p_kmeans <- ggplot(df_clusters, aes(x = soil_P, y = ry, color = Kmeans)) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = boundaries,
+             linetype = "dashed", color = "black") +
+  geom_text(data = data.frame(x = boundaries, y = max(df_clusters$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            vjust = -0.5, size = 3, color = "black") +
+  labs(title = "K-means",
+       x = "Soil test P (mg/kg)",
+       y = "Relative yield (%)") +
+  theme_bw() +
+  theme(legend.position = "bottom") 
+```
+
+
+```{r, echo = F}
+
+df_clusters <- dfry %>%
+  select(soil_P, ry) %>%
+  drop_na()
+
+
+set.seed(123)
+fcm <- cmeans(df_clusters$soil_P, centers = 5, m = 2, iter.max = 100)
+
+
+df_clusters$FCM <- factor(fcm$cluster)
+
+
+centers    <- sort(fcm$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+## Plot
+p_fcm <- ggplot(df_clusters, aes(x = soil_P, y = ry, color = FCM)) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = boundaries,
+             linetype = "dashed", color = "black") +
+  geom_text(data = data.frame(x = boundaries, y = max(df_clusters$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            vjust = -0.5, size = 3, color = "black") +
+  labs(title = "Fuzzy C-means",
+       x = "Soil test P (mg/kg)",
+       y = "Relative yield (%)") +
+  theme_bw() +
+  theme(legend.position = "bottom")  
+```
+```{r, echo = F}
+### CATE-NELSON
+p_kmeans
+p_fcm
+```
+Figure 6.Relative yield (RY, %) versus soil test phosphorus (Soil test P (mg/kg)) for all the datapoint in Kansas winter wheat dataset for two of unsupervised machine learning methods: K means (top), and fuzzy C means (bottom). Vertical dashed lines indicate the estimated soil P boundaries that separate five fertility classes, with numeric labels showing the corresponding cutpoints.
+
+Figure 1.DHARMa simulation based residual diagnostics for the linear mixed effects model of wheat grain yield. The QQ plot of scaled residuals (left) shows a slight deviation from the expected distribution according to the Kolmogorov Smirnov test (p = 0.0186), while dispersion and outlier tests are non significant. The boxplot of scaled residuals by predicted value class (right) indicates approximately uniform residuals and no evidence of heterogeneity of variance.
+
+
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+#### MACHINE LEARNING
+
+library(tidyverse)
+library(cluster)
+library(e1071)
+library(archetypes)
+library(factoextra)
+library(ggplot2)
+library(gridExtra)
+library(soiltestcorr)
+
+df_wheat <- df %>%
+  select(year, loc_n, rep, plot, trt, source, p_kg, p_m_ppm, hg_kg_ha) %>%
+  filter(source %in% c("MAP", "Check")) %>%
+  rename(location = loc_n,
+         rate = p_kg,
+         soil_P = p_m_ppm,
+         yield = hg_kg_ha) %>%
+  filter(!is.na(yield))
+
+
+df_wheat <- df_wheat %>%
+  mutate(location = factor(location),
+    rep= factor(rep),
+    rate= factor(rate),
+    rate_num = as.numeric(as.character(rate)))
+
+bestdf <- 
+  df_wheat %>%
+  group_by(soil_P, rep) %>%
+  mutate(yield_control = ifelse(rate_num == 0, yield, 0)) %>%
+  mutate(yield_control = ifelse(yield_control == 0, max(yield_control), max(yield_control))) %>%
+  mutate(yield_max = max(yield)) %>%
+  mutate(yield_135 = ifelse(rate_num == 135, yield, 0)) %>%
+  mutate(yield_135 = ifelse(yield_135 == 0, max(yield_135), max(yield_135)))
+
+
+### RELATIVE YIELD for R_0/R_135
+rydf <- bestdf[,c("year", "location", "rep", "soil_P", "rate_num", "yield_control", "yield_135")]
+
+rydf <- rydf %>%
+  group_by(location,rep, soil_P) %>%
+  summarise(yield_control = mean(yield_control),
+            yield_135 = mean(yield_135),.groups = "drop")
+
+rydf$ry <- (rydf$yield_control/rydf$yield_135)*100
+
+
+### RELATIVE YIELD for R_0/R_max
+dfry <- bestdf[,c("year", "location", "rep", "soil_P", "rate_num", "yield_control", "yield_max")]
+
+dfry <- dfry %>%
+  group_by(location,rep, soil_P) %>%
+  summarise(yield_control = mean(yield_control),
+            yield_max = mean(yield_max),.groups = "drop")
+
+dfry$ry <- (dfry$yield_control/dfry$yield_max)*100
+
+
+df_clusters <- dfry %>% select(ry, soil_P)
+
+df_scaled <- scale(df_clusters)
+
+```
+
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+###### QUADRATIC PLATEAU
+quadratic_plateau(df_clusters, stv = soil_P, ry = ry, target = 95, plot = T)
+
+
+quad_df <- df_clusters %>%
+  filter(soil_P < 27.3)
+
+quad_scaled <- scale(quad_df)
+
+
+### KMEANS
+set.seed(8008135)
+km <- kmeans(quad_df$soil_P, centers = 3, nstart = 25)
+
+quad_df$Kmeans <- factor(km$cluster)
+
+centers <- sort(km$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+a <- ggplot(quad_df, aes(x = soil_P, y = ry, color = Kmeans)) +
+  geom_point(size = 1) +
+  geom_vline(xintercept = boundaries, 
+             linetype = "dashed", color = "black") +
+  theme_bw() +
+  geom_text(data = data.frame(x = boundaries, y = max(quad_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            color = "black", vjust = -0.5, size = 3)+
+  labs(title = "K-means")
+
+
+
+### FUZZY C-MEANS
+set.seed(8008135)
+fcm <- cmeans(quad_df$soil_P, centers = 3, m = 2, iter.max = 100)
+fcm$membership
+fcm$cluster
+
+centers <- sort(fcm$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+quad_df$FCM <- factor(fcm$cluster)
+
+b <- ggplot(quad_df, aes(x = soil_P, y = ry, color = FCM)) +
+  geom_point(size = 1) +
+  geom_vline(xintercept = boundaries, 
+             linetype = "dashed", color = "black")+
+  theme_bw() +
+  geom_text(data = data.frame(x = boundaries, y = max(quad_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            color = "black", vjust = -0.5, size = 3)+
+  labs(title = "Fuzzy C-means")
+
+
+
+
+### ARCHETYPE ANALYSIS
+set.seed(8008135)
+arc <- archetypes(quad_df[, c("soil_P", "ry")], k = 3)
+
+alpha <- coef(arc)
+
+quad_df$ArchGroup <- factor(max.col(alpha))
+
+arch_pts <- as.data.frame(parameters(arc)) 
+arch_pts$Archetype <- factor(1:nrow(arch_pts))
+
+centers_soil <- quad_df %>%
+  group_by(ArchGroup) %>%
+  summarise(soil_med = median(soil_P), .groups = "drop") %>%
+  arrange(soil_med)
+
+centers <- centers_soil$soil_med
+boundaries_arc <- (centers[-1] + centers[-length(centers)]) / 2
+
+c <- ggplot(quad_df, aes(x = soil_P, y = ry, color = ArchGroup)) +
+  geom_point(size = 1) +
+  geom_point(data = arch_pts,
+             aes(x = soil_P, y = ry),
+             shape = 8, size = 4, color = "black") +
+  geom_text(data = arch_pts,
+            aes(label = Archetype),
+            vjust = -1, color = "black") +
+  geom_vline(xintercept = boundaries_arc,
+             linetype = "dashed", color = "black") +
+  geom_text(data = data.frame(x = boundaries_arc,
+                              y = min(quad_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            vjust = -1, color = "black", size = 3) +
+  theme_bw() +
+  labs(title = "Archetype Analysis",
+       color = "Archetype")
+
+```
+Figure 2.Quadratic plateau model relating relative yield (%) to soil test phosphorus (mg/kg), showing an estimated critical STPvalue of 27.3 (mg/kg) and a yield plateau near 78 percent.
+
+```{r, echo = F}
+####### QUADRATIC PLATEAU
+a
+b
+c
+```
+Figure 3.Relative yield (RY, %) versus soil test phosphorus (soil_P, mg/kg) for Kansas wheat trials classified using three unsupervised methods: K means (top), fuzzy C means (middle), and archetype analysis (bottom). Points are colored according to the assigned cluster or archetype. Vertical dashed lines indicate the estimated soil P boundaries that separate three fertility classes, with numeric labels showing the corresponding cutpoints. In the archetype panel, black asterisks mark the locations of archetypes 1, 2, and 3 in the soil P–RY space.
+
+```{r, warning = F, results=F, message=FALSE, echo=FALSE}
+##### CATE AND NELSON
+cate_nelson_1965(df_clusters, stv = soil_P, ry = ry, target = 95, plot = T)
+
+cate_df <- df_clusters %>%
+  filter(soil_P < 46.4)
+
+cate_scaled <- scale(cate_df)
+
+### KMEANS
+#fviz_nbclust(cate_scaled, kmeans, method = "wss")
+
+#fviz_nbclust(cate_scaled, kmeans, method = "silhouette")
+
+set.seed(123)
+km <- kmeans(cate_df$soil_P, centers = 3, nstart = 25)
+
+cate_df$Kmeans <- factor(km$cluster)
+
+centers <- sort(km$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+a <- ggplot(cate_df, aes(x = soil_P, y = ry, color = Kmeans)) +
+  geom_point(size = 1) +
+  geom_vline(xintercept = boundaries, 
+             linetype = "dashed", color = "black") +
+  theme_bw() +
+  geom_text(data = data.frame(x = boundaries, y = max(cate_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            color = "black", vjust = -0.5, size = 3)+
+  labs(title = "K-means")+
+  xlab("Soil test value") + 
+  ylab("Relative yield (%)")
+
+
+
+### FUZZY C-MEANS
+set.seed(123)
+fcm <- cmeans(cate_df$soil_P, centers = 3, m = 2, iter.max = 100)
+fcm$membership
+fcm$cluster
+
+centers <- sort(fcm$centers)
+boundaries <- (centers[-1] + centers[-length(centers)]) / 2
+
+cate_df$FCM <- factor(fcm$cluster)
+
+b <- ggplot(cate_df, aes(x = soil_P, y = ry, color = FCM)) +
+  geom_point(size = 1) +
+  geom_vline(xintercept = boundaries, 
+             linetype = "dashed", color = "black")+
+  theme_bw() +
+  geom_text(data = data.frame(x = boundaries, y = max(cate_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            color = "black", vjust = -0.5, size = 3)+
+  labs(title = "Fuzzy C-means")+
+  xlab("Soil test value") + 
+  ylab("Relative yield (%)")
+
+
+
+
+### ARCHETYPE ANALYSIS
+set.seed(123)
+arc <- archetypes(cate_df[, c("soil_P", "ry")], k = 3)
+
+alpha <- coef(arc)
+
+cate_df$ArchGroup <- factor(max.col(alpha))
+
+arch_pts <- as.data.frame(parameters(arc)) 
+arch_pts$Archetype <- factor(1:nrow(arch_pts))
+
+centers_soil <- cate_df %>%
+  group_by(ArchGroup) %>%
+  summarise(soil_med = median(soil_P), .groups = "drop") %>%
+  arrange(soil_med)
+
+centers <- centers_soil$soil_med
+boundaries_arc <- (centers[-1] + centers[-length(centers)]) / 2
+
+c <- ggplot(cate_df, aes(x = soil_P, y = ry, color = ArchGroup)) +
+  geom_point(size = 1) +
+  geom_point(data = arch_pts,
+             aes(x = soil_P, y = ry),
+             shape = 8, size = 4, color = "black") +
+  geom_text(data = arch_pts,
+            aes(label = Archetype),
+            vjust = -1, color = "black") +
+  geom_vline(xintercept = boundaries_arc,
+             linetype = "dashed", color = "black") +
+  geom_text(data = data.frame(x = boundaries_arc,
+                              y = min(cate_df$ry)),
+            aes(x = x, y = y, label = round(x, 1)),
+            vjust = -1, color = "black", size = 3) +
+  theme_bw() +
+  labs(title = "Archetype Analysis",
+       color = "Archetype")+
+  xlab("Soil test value") + 
+  ylab("Relative yield (%)")
+
+```
+Figure 4.Cate and Nelson plot of relative yield (%) versus soil test phosphorus (mg/kg), showing a 95% relative yield cutoff and an estimated critical soil test value of 46.4 ppm that separates responsive and non responsive observations.
+
+```{r, echo = F}
+### CATE-NELSON
+a
+b
+c
+```
+Figure 5.Relative yield (RY, %) versus soil test phosphorus (soil_P, mg/kg) for Kansas wheat trials classified using three unsupervised methods: K means (top), fuzzy C means (middle), and archetype analysis (bottom). Points are colored according to the assigned cluster or archetype. Vertical dashed lines indicate the estimated soil P boundaries that separate three fertility classes, with numeric labels showing the corresponding cutpoints. In the archetype panel, black asterisks mark the locations of archetypes 1, 2, and 3 in the soil P–RY space.
